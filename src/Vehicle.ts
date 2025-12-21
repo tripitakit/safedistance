@@ -24,7 +24,7 @@ export class Vehicle {
   private createMesh(color: number): THREE.Group {
     const group = new THREE.Group();
 
-    // Car body (shortened for player vehicle)
+    // Car body (shortened for player vehicle) - REFLECTIVE
     const bodyLength = color === 0x0000ff ? 1.5 : 4; // Player car hood is much shorter
     const bodyWidth = color === 0x0000ff ? 1.4 : 2; // Player car hood is narrower
     const bodyGeometry = new THREE.BoxGeometry(bodyWidth, 1, bodyLength);
@@ -32,14 +32,16 @@ export class Vehicle {
       color,
       // Make player car hood semi-transparent to see wheels through it
       transparent: color === 0x0000ff,
-      opacity: color === 0x0000ff ? 0.4 : 1.0
+      opacity: color === 0x0000ff ? 0.4 : 1.0,
+      metalness: 0.8,
+      roughness: 0.2
     });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
     body.position.y = 0.5;
     // Don't shift player car body - keep it in normal position
     group.add(body);
 
-    // Car cabin
+    // Car cabin - REFLECTIVE
     const cabinGeometry = new THREE.BoxGeometry(1.8, 0.8, 2);
     let cabinColor = 0x000080; // Default blue for player
     if (color === 0xffff00) {
@@ -50,7 +52,9 @@ export class Vehicle {
     const cabinMaterial = new THREE.MeshStandardMaterial({
       color: cabinColor,
       transparent: color === 0x0000ff,
-      opacity: color === 0x0000ff ? 0.3 : 1.0 // Semi-transparent for player to see through
+      opacity: color === 0x0000ff ? 0.3 : 1.0, // Semi-transparent for player to see through
+      metalness: 0.7,
+      roughness: 0.3
     });
     const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
     cabin.position.y = 1.4;
@@ -79,6 +83,120 @@ export class Vehicle {
       wheel.userData.isWheel = true; // Mark as wheel for feedback updates
       group.add(wheel);
     });
+
+    // Add mirrors to PLAYER vehicle only (blue car)
+    if (color === 0x0000ff) {
+      // Mirror frame material
+      const mirrorFrameMaterial = new THREE.MeshStandardMaterial({
+        color: 0x111111,
+        roughness: 0.3,
+        metalness: 0.8
+      });
+
+      // LEFT SIDE MIRROR - large, flat, rectangular
+      const leftMirrorFrame = new THREE.BoxGeometry(0.5, 0.35, 0.05);
+      const leftMirror = new THREE.Mesh(leftMirrorFrame, mirrorFrameMaterial);
+      leftMirror.position.set(-0.95, 1.1, -0.3);
+      group.add(leftMirror);
+
+      // Left mirror surface - large flat rectangle facing backward
+      const leftMirrorSurface = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.45, 0.30),
+        new THREE.MeshBasicMaterial({ color: 0x333344, side: THREE.DoubleSide })
+      );
+      leftMirrorSurface.position.set(-0.95, 1.1, -0.27);
+      leftMirrorSurface.rotation.y = Math.PI; // Face straight backward
+      leftMirrorSurface.userData.isMirror = true;
+      leftMirrorSurface.userData.mirrorType = 'left';
+      group.add(leftMirrorSurface);
+
+      // RIGHT SIDE MIRROR - large, flat, rectangular
+      const rightMirror = new THREE.Mesh(leftMirrorFrame.clone(), mirrorFrameMaterial);
+      rightMirror.position.set(0.95, 1.1, -0.3);
+      group.add(rightMirror);
+
+      // Right mirror surface - large flat rectangle facing backward
+      const rightMirrorSurface = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.45, 0.30),
+        new THREE.MeshBasicMaterial({ color: 0x333344, side: THREE.DoubleSide })
+      );
+      rightMirrorSurface.position.set(0.95, 1.1, -0.27);
+      rightMirrorSurface.rotation.y = Math.PI; // Face straight backward
+      rightMirrorSurface.userData.isMirror = true;
+      rightMirrorSurface.userData.mirrorType = 'right';
+      group.add(rightMirrorSurface);
+
+      // CENTER REARVIEW MIRROR - very large
+      const centerMirrorFrame = new THREE.BoxGeometry(0.7, 0.25, 0.04);
+      const centerMirror = new THREE.Mesh(centerMirrorFrame, mirrorFrameMaterial);
+      centerMirror.position.set(0, 1.5, -0.4);
+      group.add(centerMirror);
+
+      // Center mirror surface - large, facing backward
+      const centerMirrorSurface = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.65, 0.20),
+        new THREE.MeshBasicMaterial({ color: 0x333344, side: THREE.DoubleSide })
+      );
+      centerMirrorSurface.position.set(0, 1.5, -0.38);
+      centerMirrorSurface.rotation.y = Math.PI;
+      centerMirrorSurface.userData.isMirror = true;
+      centerMirrorSurface.userData.mirrorType = 'center';
+      group.add(centerMirrorSurface);
+
+      // PLAYER CAR HEADLIGHTS - visible on hood, shining forward
+      const headlightGeometry = new THREE.BoxGeometry(0.3, 0.2, 0.1);
+      const headlightMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: 0xffffcc,
+        emissiveIntensity: 3
+      });
+
+      // Left headlight
+      const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+      leftHeadlight.position.set(-0.5, 0.55, -0.8);
+      group.add(leftHeadlight);
+
+      // Right headlight
+      const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial.clone());
+      rightHeadlight.position.set(0.5, 0.55, -0.8);
+      group.add(rightHeadlight);
+
+      // Headlight lens glow (bright white circles)
+      const lensGeometry = new THREE.CircleGeometry(0.08, 16);
+      const lensMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+      const leftLens = new THREE.Mesh(lensGeometry, lensMaterial);
+      leftLens.position.set(-0.5, 0.55, -0.86);
+      leftLens.rotation.y = Math.PI; // Face forward
+      group.add(leftLens);
+
+      const rightLens = new THREE.Mesh(lensGeometry, lensMaterial);
+      rightLens.position.set(0.5, 0.55, -0.86);
+      rightLens.rotation.y = Math.PI;
+      group.add(rightLens);
+
+      // Point lights for headlight glow
+      const leftLight = new THREE.PointLight(0xffffee, 2, 20);
+      leftLight.position.set(-0.5, 0.6, -1.2);
+      group.add(leftLight);
+
+      const rightLight = new THREE.PointLight(0xffffee, 2, 20);
+      rightLight.position.set(0.5, 0.6, -1.2);
+      group.add(rightLight);
+
+      // Spotlights for visible beam effect
+      const leftSpot = new THREE.SpotLight(0xffffdd, 3, 40, Math.PI / 8, 0.5);
+      leftSpot.position.set(-0.5, 0.6, -0.9);
+      leftSpot.target.position.set(-0.5, 0, -20);
+      group.add(leftSpot);
+      group.add(leftSpot.target);
+
+      const rightSpot = new THREE.SpotLight(0xffffdd, 3, 40, Math.PI / 8, 0.5);
+      rightSpot.position.set(0.5, 0.6, -0.9);
+      rightSpot.target.position.set(0.5, 0, -20);
+      group.add(rightSpot);
+      group.add(rightSpot.target);
+    }
 
     // Add brake lights, rear windscreen, and license plate to LEAD vehicle only (yellow car)
     if (color === 0xffff00) {

@@ -74,6 +74,13 @@ class SafeDistanceSimulator {
   private readonly SAFE_DISTANCE_FACTOR = 0.5; // seconds of reaction time
   private readonly MIN_SAFE_DISTANCE = 10; // meters
 
+  // Rear car and mirror system
+  private rearCar!: THREE.Group;
+  private rearCamera!: THREE.PerspectiveCamera;
+  private mirrorRenderTarget!: THREE.WebGLRenderTarget;
+  private rearCarDistance: number = 15; // Base distance behind player
+  private rearCarTargetDistance: number = 15;
+
   constructor() {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(
@@ -175,6 +182,10 @@ class SafeDistanceSimulator {
     this.playerVehicle = new Vehicle(vehicleConfig, 0x0000ff); // Blue car
     this.playerVehicle.setVelocity(this.leadVehicle.getVelocityKmh()); // Start at same speed
     this.scene.add(this.playerVehicle.mesh);
+
+    // Create rear car that tailgates the player
+    this.createRearCar();
+    this.setupMirrors();
 
     this.inputController = new InputController();
 
@@ -313,6 +324,230 @@ class SafeDistanceSimulator {
     });
 
     return chain;
+  }
+
+  private createRearCar(): void {
+    // Create a car that follows behind the player (visible in mirrors)
+    this.rearCar = new THREE.Group();
+
+    // Car body (red color for visibility) - REFLECTIVE
+    const bodyGeometry = new THREE.BoxGeometry(2, 1, 4);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+      color: 0xcc0000,
+      roughness: 0.2,
+      metalness: 0.8
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 0.5;
+    this.rearCar.add(body);
+
+    // Cabin - REFLECTIVE
+    const cabinGeometry = new THREE.BoxGeometry(1.8, 0.8, 2);
+    const cabinMaterial = new THREE.MeshStandardMaterial({
+      color: 0x220000,
+      roughness: 0.3,
+      metalness: 0.7
+    });
+    const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
+    cabin.position.y = 1.4;
+    cabin.position.z = -0.5;
+    this.rearCar.add(cabin);
+
+    // Front windscreen (facing player - this is what we'll see in mirrors)
+    const windscreenGeometry = new THREE.PlaneGeometry(1.6, 0.7);
+    const windscreenMaterial = new THREE.MeshStandardMaterial({
+      color: 0x88ccff,
+      transparent: true,
+      opacity: 0.5,
+      metalness: 0.9,
+      roughness: 0.1,
+      side: THREE.DoubleSide
+    });
+    const windscreen = new THREE.Mesh(windscreenGeometry, windscreenMaterial);
+    windscreen.position.set(0, 1.4, -1.55);
+    windscreen.rotation.x = -0.2; // Slight angle
+    this.rearCar.add(windscreen);
+
+    // HEADLIGHTS - very bright, large white areas visible in mirrors
+    // Since car is rotated 180°, front is at local -Z but faces player at +Z world
+    const headlightGeometry = new THREE.BoxGeometry(0.6, 0.4, 0.2);
+    const headlightMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff // Pure white, unlit - always bright
+    });
+
+    // Left headlight housing
+    const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+    leftHeadlight.position.set(-0.7, 0.55, -2.05);
+    this.rearCar.add(leftHeadlight);
+
+    // Right headlight housing
+    const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+    rightHeadlight.position.set(0.7, 0.55, -2.05);
+    this.rearCar.add(rightHeadlight);
+
+    // Large bright lens circles - VERY visible white spots
+    const lensGeometry = new THREE.CircleGeometry(0.18, 16);
+    const lensMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide
+    });
+
+    const leftLens = new THREE.Mesh(lensGeometry, lensMaterial);
+    leftLens.position.set(-0.7, 0.55, -2.16);
+    this.rearCar.add(leftLens);
+
+    const rightLens = new THREE.Mesh(lensGeometry, lensMaterial);
+    rightLens.position.set(0.7, 0.55, -2.16);
+    this.rearCar.add(rightLens);
+
+    // Secondary smaller lenses for dual-headlight look
+    const smallLensGeometry = new THREE.CircleGeometry(0.1, 16);
+
+    const leftLens2 = new THREE.Mesh(smallLensGeometry, lensMaterial);
+    leftLens2.position.set(-0.45, 0.55, -2.16);
+    this.rearCar.add(leftLens2);
+
+    const rightLens2 = new THREE.Mesh(smallLensGeometry, lensMaterial);
+    rightLens2.position.set(0.45, 0.55, -2.16);
+    this.rearCar.add(rightLens2);
+
+    // Emissive glow boxes behind lenses
+    const glowMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffcc,
+      emissive: 0xffffaa,
+      emissiveIntensity: 8
+    });
+
+    const leftGlow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.05), glowMaterial);
+    leftGlow.position.set(-0.6, 0.55, -2.1);
+    this.rearCar.add(leftGlow);
+
+    const rightGlow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.05), glowMaterial.clone());
+    rightGlow.position.set(0.6, 0.55, -2.1);
+    this.rearCar.add(rightGlow);
+
+    // Strong point lights for headlight illumination
+    const leftLight = new THREE.PointLight(0xffffee, 5, 30);
+    leftLight.position.set(-0.7, 0.6, -2.5);
+    this.rearCar.add(leftLight);
+
+    const rightLight = new THREE.PointLight(0xffffee, 5, 30);
+    rightLight.position.set(0.7, 0.6, -2.5);
+    this.rearCar.add(rightLight);
+
+    // Wheels
+    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+    const wheelMaterial = new THREE.MeshStandardMaterial({
+      color: 0x222222,
+      roughness: 0.8
+    });
+
+    const wheelPositions = [
+      [-0.9, 0.4, 1.2],
+      [0.9, 0.4, 1.2],
+      [-0.9, 0.4, -1.2],
+      [0.9, 0.4, -1.2]
+    ];
+
+    wheelPositions.forEach(pos => {
+      const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(pos[0], pos[1], pos[2]);
+      this.rearCar.add(wheel);
+    });
+
+    // Grille
+    const grilleGeometry = new THREE.PlaneGeometry(1.4, 0.4);
+    const grilleMaterial = new THREE.MeshStandardMaterial({
+      color: 0x111111,
+      roughness: 0.3
+    });
+    const grille = new THREE.Mesh(grilleGeometry, grilleMaterial);
+    grille.position.set(0, 0.4, -2.01);
+    this.rearCar.add(grille);
+
+    // Position rear car behind player and rotate to face player
+    this.rearCar.position.z = this.rearCarDistance;
+    this.rearCar.rotation.y = Math.PI; // Rotate 180° so front faces the player
+    this.scene.add(this.rearCar);
+  }
+
+  private setupMirrors(): void {
+    // Create high-resolution render target for mirror reflections
+    this.mirrorRenderTarget = new THREE.WebGLRenderTarget(512, 256, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat
+    });
+
+    // Create rear-facing camera for mirror view - wide angle to capture more
+    this.rearCamera = new THREE.PerspectiveCamera(80, 2, 0.1, 150);
+
+    // Find and update mirror surfaces with render texture
+    this.playerVehicle.mesh.children.forEach(child => {
+      if (child instanceof THREE.Mesh && child.userData.isMirror) {
+        // Replace material with one that uses the render target
+        // DoubleSide ensures visibility from driver's perspective
+        child.material = new THREE.MeshBasicMaterial({
+          map: this.mirrorRenderTarget.texture,
+          side: THREE.DoubleSide
+        });
+      }
+    });
+  }
+
+  private updateRearCar(deltaTime: number): void {
+    if (!this.rearCar) return;
+
+    // Rear car follows player at varying distance
+    // Tailgates more aggressively at higher speeds
+    const playerSpeed = this.playerVehicle.getVelocityKmh();
+
+    // Random tailgating behavior - closer at higher speeds
+    if (Math.random() < 0.01) {
+      // Occasionally change target distance
+      const minDistance = Math.max(8, 20 - playerSpeed / 10);
+      const maxDistance = Math.max(15, 30 - playerSpeed / 8);
+      this.rearCarTargetDistance = minDistance + Math.random() * (maxDistance - minDistance);
+    }
+
+    // Smoothly approach target distance
+    this.rearCarDistance += (this.rearCarTargetDistance - this.rearCarDistance) * deltaTime * 0.5;
+
+    // Position rear car behind player
+    const playerZ = this.playerVehicle.mesh.position.z;
+    this.rearCar.position.z = playerZ + this.rearCarDistance;
+    this.rearCar.position.x = (Math.sin(Date.now() * 0.001) * 0.5); // Slight weaving
+  }
+
+  private updateMirrors(): void {
+    if (!this.rearCamera || !this.mirrorRenderTarget) return;
+
+    // Position rear camera behind player looking back
+    const playerPos = this.playerVehicle.mesh.position;
+    this.rearCamera.position.set(
+      playerPos.x,
+      playerPos.y + 1.3,
+      playerPos.z + 1
+    );
+
+    // Look backward (toward the rear car)
+    this.rearCamera.lookAt(
+      playerPos.x,
+      playerPos.y + 1,
+      playerPos.z + 50
+    );
+
+    // Hide player vehicle during mirror render
+    this.playerVehicle.mesh.visible = false;
+
+    // Render to mirror texture
+    this.renderer.setRenderTarget(this.mirrorRenderTarget);
+    this.renderer.render(this.scene, this.rearCamera);
+    this.renderer.setRenderTarget(null);
+
+    // Show player vehicle again
+    this.playerVehicle.mesh.visible = true;
   }
 
   private setupLighting(): void {
@@ -1257,6 +1492,10 @@ class SafeDistanceSimulator {
     // Update camera and road
     this.updateCamera();
     this.updateRoad();
+
+    // Update rear car and mirrors
+    this.updateRearCar(clampedDelta);
+    this.updateMirrors();
 
     // Check for collision
     this.checkCollision();
