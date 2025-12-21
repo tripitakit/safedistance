@@ -5,11 +5,11 @@ export default defineConfig({
     port: 3031,
     host: true,
     open: true,
-    allowedHosts: ['safedistance.tripitak.it']
+    allowedHosts: true
   },
   preview: {
     port: 3031,
     host: true,
-    allowedHosts: ['safedistance.tripitak.it']
+    allowedHosts: true
   }
 })
