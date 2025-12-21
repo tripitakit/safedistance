@@ -16,6 +16,7 @@ class SafeDistanceSimulator {
   private road!: THREE.Group;
   private roadMarkings!: THREE.Group;
   private environment!: THREE.Group;
+  private environment2!: THREE.Group;
 
   private lastTime: number = 0;
 
@@ -152,8 +153,12 @@ class SafeDistanceSimulator {
     this.setupLighting();
     this.road = this.createRoad();
     this.scene.add(this.road);
+
+    // Create two environment copies for seamless infinite scrolling
     this.environment = this.createEnvironment();
     this.scene.add(this.environment);
+    this.environment2 = this.createEnvironment();
+    this.scene.add(this.environment2);
 
     // Create vehicles with realistic parameters
     const vehicleConfig: VehicleConfig = {
@@ -529,9 +534,16 @@ class SafeDistanceSimulator {
     const markingOffset = playerPos % dashPattern;
     this.roadMarkings.position.z = markingOffset;
 
-    // Animate environment objects (trees, houses, bushes) to scroll backwards
-    // Objects should move toward camera (positive Z) as player drives forward
-    this.environment.position.z = roadOffset;
+    // Animate environment objects (trees, houses, bushes) with infinite scrolling
+    // Use two copies positioned 2000m apart for seamless looping
+    const envOffset = playerPos % roadLength;
+
+    // First environment copy scrolls forward (toward camera)
+    this.environment.position.z = envOffset;
+
+    // Second environment copy is positioned 2000m behind the first
+    // When first copy passes through, second copy takes its place
+    this.environment2.position.z = envOffset - roadLength;
   }
 
   private updateHUD(): void {
@@ -555,14 +567,17 @@ class SafeDistanceSimulator {
 
     // Update score - only award points when driving below safe distance
     if (distance < safeDistance && distance > 0 && !this.isCrashing) {
-      // Calculate scoring coefficient based on how close to lead car
+      // Calculate proximity coefficient based on how close to lead car
       // Closer = higher multiplier (max 10x when very close, min 1x at safe distance)
       const proximityRatio = distance / safeDistance; // 0 to 1 (0 = very close, 1 = at safe distance)
-      const scoreMultiplier = 1 + (1 - proximityRatio) * 9; // 1x to 10x
+      const proximityMultiplier = 1 + (1 - proximityRatio) * 9; // 1x to 10x
 
-      // Award points based on distance traveled and proximity
-      // Higher speed = more points (speed in km/h converted to points per frame)
-      const pointsPerFrame = (speed / 3600) * scoreMultiplier * 10; // Scaled for reasonable scoring
+      // Calculate speed coefficient (faster = higher score)
+      // At 30 km/h: ~1.6x, at 60 km/h: ~2.2x, at 100 km/h: ~3.0x, at 150 km/h: ~4.0x
+      const speedCoefficient = 1 + (speed / 50); // Direct correlation with speed
+
+      // Award points based on distance traveled, proximity, and speed
+      const pointsPerFrame = (speed / 3600) * proximityMultiplier * speedCoefficient * 10;
       this.score += pointsPerFrame;
     }
     const roundedScore = Math.round(this.score).toString();
