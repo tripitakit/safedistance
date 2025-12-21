@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Vehicle, VehicleConfig } from './Vehicle';
 import { LeadVehicleAI } from './LeadVehicleAI';
 import { InputController } from './InputController';
+import { HighScoreManager } from './HighScoreManager';
 
 class SafeDistanceSimulator {
   private scene: THREE.Scene;
@@ -27,12 +28,22 @@ class SafeDistanceSimulator {
   private accelElement: HTMLElement;
   private warningTooCloseElement: HTMLElement;
   private warningSafeElement: HTMLElement;
+  private kmCounterElement: HTMLElement;
+  private scoreElement: HTMLElement;
+  private scoreOverlayElement: HTMLElement;
+  private gameStartOverlayElement!: HTMLElement;
   private speedometerCanvas: HTMLCanvasElement;
   private speedometerCtx: CanvasRenderingContext2D;
 
   // Warning state
   private warningTimeout: number | null = null;
   private lastWarningState: 'safe' | 'danger' | null = null;
+
+  // Game start state
+  private gameStarted: boolean = false;
+
+  // Game stats
+  private score: number = 0;
 
   // Game Over elements
   private gameOverElement: HTMLElement;
@@ -41,8 +52,23 @@ class SafeDistanceSimulator {
   private crashYourSpeedElement: HTMLElement;
   private crashLeadSpeedElement: HTMLElement;
   private damageElement: HTMLElement;
+  private finalKmElement: HTMLElement;
+  private finalScoreElement: HTMLElement;
   private restartBtn: HTMLElement;
+  private viewHighScoresBtn!: HTMLElement;
   private crashFlashElement: HTMLElement;
+
+  // High score elements
+  private highScoreNameInputElement!: HTMLElement;
+  private newHighScoreElement!: HTMLElement;
+  private playerNameInput!: HTMLInputElement;
+  private submitNameBtn!: HTMLElement;
+  private highScoresDisplayElement!: HTMLElement;
+  private highScoresListElement!: HTMLElement;
+  private closeHighScoresBtn!: HTMLElement;
+
+  // High score manager
+  private highScoreManager!: HighScoreManager;
 
   // Game state
   private isGameOver: boolean = false;
@@ -74,6 +100,10 @@ class SafeDistanceSimulator {
     this.accelElement = document.getElementById('accel')!;
     this.warningTooCloseElement = document.getElementById('warningTooClose')!;
     this.warningSafeElement = document.getElementById('warningSafe')!;
+    this.kmCounterElement = document.getElementById('kmCounter')!;
+    this.scoreElement = document.getElementById('score')!;
+    this.scoreOverlayElement = document.getElementById('scoreOverlay')!;
+    this.gameStartOverlayElement = document.getElementById('gameStartOverlay')!;
     this.speedometerCanvas = document.getElementById('speedometer') as HTMLCanvasElement;
     this.speedometerCtx = this.speedometerCanvas.getContext('2d')!;
 
@@ -84,11 +114,39 @@ class SafeDistanceSimulator {
     this.crashYourSpeedElement = document.getElementById('crashYourSpeed')!;
     this.crashLeadSpeedElement = document.getElementById('crashLeadSpeed')!;
     this.damageElement = document.getElementById('damage')!;
+    this.finalKmElement = document.getElementById('finalKm')!;
+    this.finalScoreElement = document.getElementById('finalScore')!;
     this.restartBtn = document.getElementById('restartBtn')!;
+    this.viewHighScoresBtn = document.getElementById('viewHighScoresBtn')!;
     this.crashFlashElement = document.getElementById('crashFlash')!;
+
+    // Get High Score elements
+    this.highScoreNameInputElement = document.getElementById('highScoreNameInput')!;
+    this.newHighScoreElement = document.getElementById('newHighScore')!;
+    this.playerNameInput = document.getElementById('playerNameInput') as HTMLInputElement;
+    this.submitNameBtn = document.getElementById('submitNameBtn')!;
+    this.highScoresDisplayElement = document.getElementById('highScoresDisplay')!;
+    this.highScoresListElement = document.getElementById('highScoresList')!;
+    this.closeHighScoresBtn = document.getElementById('closeHighScoresBtn')!;
+
+    // Initialize high score manager
+    this.highScoreManager = new HighScoreManager();
+    this.highScoreManager.initialize().catch(err => console.error('Failed to initialize high scores:', err));
 
     // Setup restart button
     this.restartBtn.addEventListener('click', () => this.restart());
+
+    // Setup high score buttons
+    this.viewHighScoresBtn.addEventListener('click', () => this.showHighScores());
+    this.submitNameBtn.addEventListener('click', () => this.submitHighScore());
+    this.closeHighScoresBtn.addEventListener('click', () => this.closeHighScores());
+
+    // Allow Enter key to submit name
+    this.playerNameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.submitHighScore();
+      }
+    });
 
     this.setupScene();
     this.setupLighting();
@@ -491,6 +549,26 @@ class SafeDistanceSimulator {
     this.brakeElement.textContent = brake.toString();
     this.accelElement.textContent = accel.toString();
 
+    // Update km counter
+    const kmDriven = this.playerVehicle.position / 1000;
+    this.kmCounterElement.textContent = kmDriven.toFixed(2);
+
+    // Update score - only award points when driving below safe distance
+    if (distance < safeDistance && distance > 0 && !this.isCrashing) {
+      // Calculate scoring coefficient based on how close to lead car
+      // Closer = higher multiplier (max 10x when very close, min 1x at safe distance)
+      const proximityRatio = distance / safeDistance; // 0 to 1 (0 = very close, 1 = at safe distance)
+      const scoreMultiplier = 1 + (1 - proximityRatio) * 9; // 1x to 10x
+
+      // Award points based on distance traveled and proximity
+      // Higher speed = more points (speed in km/h converted to points per frame)
+      const pointsPerFrame = (speed / 3600) * scoreMultiplier * 10; // Scaled for reasonable scoring
+      this.score += pointsPerFrame;
+    }
+    const roundedScore = Math.round(this.score).toString();
+    this.scoreElement.textContent = roundedScore;
+    this.scoreOverlayElement.textContent = roundedScore;
+
     // Update timed warnings based on distance state changes
     const currentState = distance < safeDistance && distance > 0 ? 'danger' : 'safe';
 
@@ -703,17 +781,111 @@ class SafeDistanceSimulator {
     this.damageElement.textContent = damageLevel;
     this.damageElement.style.color = damageColor;
 
+    // Update final stats
+    const kmDriven = this.playerVehicle.position / 1000;
+    this.finalKmElement.textContent = `${kmDriven.toFixed(2)} km`;
+    this.finalScoreElement.textContent = `${Math.round(this.score)} pts`;
+
     // Wait 2 seconds for crash animation, then show game over screen
-    setTimeout(() => {
+    setTimeout(async () => {
       this.isGameOver = true;
       this.crashFlashElement.classList.add('hidden');
       this.gameOverElement.classList.remove('hidden');
+
+      // Check if this is a high score
+      await this.checkAndShowHighScoreInput();
     }, 2000);
   }
 
   private restart(): void {
     // Reload the page to restart the simulation
     window.location.reload();
+  }
+
+  private async checkAndShowHighScoreInput(): Promise<void> {
+    const finalScore = Math.round(this.score);
+    const isHighScore = await this.highScoreManager.isHighScore(finalScore);
+
+    if (isHighScore) {
+      // Show high score name input
+      this.newHighScoreElement.textContent = finalScore.toString();
+      this.highScoreNameInputElement.classList.remove('hidden');
+      this.playerNameInput.value = '';
+      this.playerNameInput.focus();
+    }
+  }
+
+  private async submitHighScore(): Promise<void> {
+    const playerName = this.playerNameInput.value.trim();
+
+    if (playerName.length === 0) {
+      alert('Please enter your name!');
+      return;
+    }
+
+    const finalScore = Math.round(this.score);
+    const kmDriven = this.playerVehicle.position / 1000;
+
+    // Save to database
+    await this.highScoreManager.addScore(playerName, finalScore, kmDriven);
+
+    // Hide name input
+    this.highScoreNameInputElement.classList.add('hidden');
+
+    // Show high scores
+    await this.showHighScores();
+  }
+
+  private async showHighScores(): Promise<void> {
+    const topScores = await this.highScoreManager.getTopScores(10);
+
+    // Clear existing list
+    this.highScoresListElement.innerHTML = '';
+
+    if (topScores.length === 0) {
+      this.highScoresListElement.innerHTML = '<div class="empty-scores-message">No high scores yet. Be the first!</div>';
+    } else {
+      topScores.forEach((score, index) => {
+        const rank = index + 1;
+        const entry = document.createElement('div');
+        entry.className = `score-entry rank-${rank}`;
+
+        const rankElement = document.createElement('div');
+        rankElement.className = 'score-rank';
+        rankElement.textContent = `#${rank}`;
+
+        const nameElement = document.createElement('div');
+        nameElement.className = 'score-player-name';
+        nameElement.textContent = score.playerName;
+
+        const detailsElement = document.createElement('div');
+        detailsElement.className = 'score-details';
+
+        const pointsElement = document.createElement('div');
+        pointsElement.className = 'score-points';
+        pointsElement.textContent = `${score.score} pts`;
+
+        const distanceElement = document.createElement('div');
+        distanceElement.className = 'score-distance';
+        distanceElement.textContent = `${score.distance.toFixed(2)} km`;
+
+        detailsElement.appendChild(pointsElement);
+        detailsElement.appendChild(distanceElement);
+
+        entry.appendChild(rankElement);
+        entry.appendChild(nameElement);
+        entry.appendChild(detailsElement);
+
+        this.highScoresListElement.appendChild(entry);
+      });
+    }
+
+    // Show the display
+    this.highScoresDisplayElement.classList.remove('hidden');
+  }
+
+  private closeHighScores(): void {
+    this.highScoresDisplayElement.classList.add('hidden');
   }
 
   private animate(currentTime: number): void {
@@ -724,6 +896,17 @@ class SafeDistanceSimulator {
 
     // Cap delta time to prevent physics issues
     const clampedDelta = Math.min(deltaTime, 0.1);
+
+    // Hide game start overlay when A or SPACE is pressed
+    if (!this.gameStarted) {
+      const acceleration = this.inputController.getAccelerationInput();
+      const braking = this.inputController.getBrakingInput();
+
+      if (acceleration > 0 || braking > 0) {
+        this.gameStarted = true;
+        this.gameStartOverlayElement.classList.add('hidden');
+      }
+    }
 
     // Update player vehicle based on input (unless crashing)
     if (!this.isCrashing) {

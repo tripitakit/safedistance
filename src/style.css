@@ -98,22 +98,92 @@ body {
   50% { opacity: 0.7; }
 }
 
-.instructions {
+/* Top Center Score Overlay */
+.score-overlay {
   position: absolute;
-  top: 340px;
-  left: 20px;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 12px 20px;
-  border: 2px solid #0f0;
-  border-radius: 5px;
-  text-align: left;
-  font-size: 13px;
-  max-width: 300px;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 15px 40px;
+  border: 3px solid #0f0;
+  border-radius: 10px;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
 }
 
-.instructions strong {
+.score-label {
+  font-size: 14px;
+  color: #0f0;
+  font-weight: bold;
+  letter-spacing: 2px;
+  margin-bottom: 5px;
+}
+
+.score-value-overlay {
+  font-size: 42px;
+  color: #0f0;
+  font-weight: bold;
+  text-shadow: 0 0 15px rgba(0, 255, 0, 0.8);
+  font-family: 'Courier New', monospace;
+}
+
+/* Game Start Overlay */
+.game-start-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.game-start-overlay.hidden {
+  display: none;
+}
+
+.game-start-overlay h1 {
+  color: #0f0;
+  font-size: 56px;
+  font-weight: bold;
+  text-shadow: 0 0 20px rgba(0, 255, 0, 0.8);
+  margin-bottom: 60px;
+  letter-spacing: 4px;
+}
+
+.start-instructions {
+  background: rgba(0, 0, 0, 0.8);
+  padding: 40px 60px;
+  border: 3px solid #0f0;
+  border-radius: 15px;
+  box-shadow: 0 0 30px rgba(0, 255, 0, 0.5);
+}
+
+.start-instructions p {
+  color: #fff;
+  font-size: 24px;
+  margin: 20px 0;
+  text-align: center;
+}
+
+.start-instructions strong {
   color: #ff0;
   text-shadow: 0 0 10px rgba(255, 255, 0, 0.8);
+  font-size: 28px;
+}
+
+.start-hint {
+  color: #0f0 !important;
+  font-size: 20px !important;
+  margin-top: 40px !important;
+  animation: pulse 1s infinite;
+  font-style: italic;
 }
 
 /* Speedometer Gauge */
@@ -277,4 +347,312 @@ body {
 
 .restart-btn:active {
   transform: scale(0.98);
+}
+
+.view-scores-btn {
+  width: 100%;
+  padding: 15px;
+  margin-top: 10px;
+  font-size: 18px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  background: linear-gradient(135deg, #0f0 0%, #0a0 100%);
+  color: #000;
+  border: 3px solid #0f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 5px 15px rgba(0, 255, 0, 0.4);
+}
+
+.view-scores-btn:hover {
+  background: linear-gradient(135deg, #0ff 0%, #0f0 100%);
+  transform: scale(1.05);
+  box-shadow: 0 8px 25px rgba(0, 255, 0, 0.6);
+}
+
+.view-scores-btn:active {
+  transform: scale(0.98);
+}
+
+/* High Score Name Input Overlay */
+.high-score-input {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1001;
+  pointer-events: all;
+}
+
+.high-score-input.hidden {
+  display: none;
+}
+
+.high-score-panel {
+  background: linear-gradient(135deg, #1a0066 0%, #330099 100%);
+  border: 4px solid #ffaa00;
+  border-radius: 15px;
+  padding: 40px;
+  max-width: 600px;
+  width: 90%;
+  box-shadow: 0 0 50px rgba(255, 170, 0, 0.5);
+  animation: highScoreAppear 0.5s ease-out;
+}
+
+@keyframes highScoreAppear {
+  from {
+    transform: scale(0.5) rotate(-5deg);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.high-score-panel h1 {
+  color: #ffaa00;
+  font-size: 42px;
+  text-align: center;
+  margin-bottom: 30px;
+  text-shadow: 0 0 20px rgba(255, 170, 0, 0.8);
+  animation: pulse 1s infinite;
+}
+
+.high-score-message {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.high-score-message p {
+  color: #fff;
+  font-size: 24px;
+  margin: 10px 0;
+}
+
+.highlight-score {
+  color: #ffaa00;
+  font-size: 32px;
+  font-weight: bold;
+  text-shadow: 0 0 15px rgba(255, 170, 0, 0.8);
+}
+
+.name-input-section {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.name-input-section label {
+  color: #ffaa00;
+  font-size: 20px;
+  font-weight: bold;
+  text-align: center;
+}
+
+#playerNameInput {
+  padding: 15px;
+  font-size: 24px;
+  font-family: 'Courier New', monospace;
+  background: rgba(255, 255, 255, 0.9);
+  border: 3px solid #ffaa00;
+  border-radius: 10px;
+  text-align: center;
+  color: #000;
+  font-weight: bold;
+}
+
+#playerNameInput:focus {
+  outline: none;
+  border-color: #fff;
+  box-shadow: 0 0 20px rgba(255, 170, 0, 0.5);
+}
+
+.submit-name-btn {
+  padding: 15px;
+  font-size: 24px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  background: linear-gradient(135deg, #ffaa00 0%, #ff8800 100%);
+  color: #000;
+  border: 3px solid #fff;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 5px 15px rgba(255, 170, 0, 0.4);
+}
+
+.submit-name-btn:hover {
+  background: linear-gradient(135deg, #ffcc00 0%, #ffaa00 100%);
+  transform: scale(1.05);
+  box-shadow: 0 8px 25px rgba(255, 170, 0, 0.6);
+}
+
+.submit-name-btn:active {
+  transform: scale(0.98);
+}
+
+/* High Scores Display */
+.high-scores-display {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1002;
+  pointer-events: all;
+}
+
+.high-scores-display.hidden {
+  display: none;
+}
+
+.high-scores-panel {
+  background: linear-gradient(135deg, #001a33 0%, #003366 100%);
+  border: 4px solid #0f0;
+  border-radius: 15px;
+  padding: 40px;
+  max-width: 800px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 0 50px rgba(0, 255, 0, 0.5);
+  animation: scoresAppear 0.5s ease-out;
+}
+
+@keyframes scoresAppear {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.high-scores-panel h1 {
+  color: #0f0;
+  font-size: 42px;
+  text-align: center;
+  margin-bottom: 30px;
+  text-shadow: 0 0 20px rgba(0, 255, 0, 0.8);
+}
+
+.high-scores-list {
+  margin-bottom: 30px;
+}
+
+.score-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  margin: 10px 0;
+  background: rgba(0, 0, 0, 0.5);
+  border: 2px solid #0f0;
+  border-radius: 10px;
+  transition: all 0.3s;
+}
+
+.score-entry:hover {
+  background: rgba(0, 255, 0, 0.1);
+  transform: scale(1.02);
+}
+
+.score-rank {
+  font-size: 28px;
+  font-weight: bold;
+  color: #ffaa00;
+  min-width: 60px;
+  text-shadow: 0 0 10px rgba(255, 170, 0, 0.8);
+}
+
+.score-entry.rank-1 .score-rank {
+  color: #ffd700;
+  font-size: 36px;
+  text-shadow: 0 0 15px rgba(255, 215, 0, 0.9);
+}
+
+.score-entry.rank-2 .score-rank {
+  color: #c0c0c0;
+  font-size: 32px;
+}
+
+.score-entry.rank-3 .score-rank {
+  color: #cd7f32;
+  font-size: 30px;
+}
+
+.score-player-name {
+  flex: 1;
+  font-size: 24px;
+  color: #fff;
+  font-weight: bold;
+  margin: 0 20px;
+}
+
+.score-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.score-points {
+  font-size: 28px;
+  font-weight: bold;
+  color: #0f0;
+  text-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+}
+
+.score-distance {
+  font-size: 16px;
+  color: #aaa;
+  margin-top: 5px;
+}
+
+.close-scores-btn {
+  width: 100%;
+  padding: 15px;
+  font-size: 24px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  background: linear-gradient(135deg, #0f0 0%, #0a0 100%);
+  color: #000;
+  border: 3px solid #fff;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 5px 15px rgba(0, 255, 0, 0.4);
+}
+
+.close-scores-btn:hover {
+  background: linear-gradient(135deg, #0ff 0%, #0f0 100%);
+  transform: scale(1.05);
+  box-shadow: 0 8px 25px rgba(0, 255, 0, 0.6);
+}
+
+.close-scores-btn:active {
+  transform: scale(0.98);
+}
+
+.empty-scores-message {
+  text-align: center;
+  color: #aaa;
+  font-size: 20px;
+  padding: 40px;
+  font-style: italic;
 }

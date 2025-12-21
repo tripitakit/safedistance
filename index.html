@@ -41,12 +41,35 @@
             <span id="accel" class="value">0</span>
             <span class="unit">%</span>
           </div>
-        </div>
-        <div class="instructions">
-          <p><strong>A</strong> - Accelerate | <strong>SPACE</strong> - Brake (hold for more power)</p>
+          <div class="hud-item">
+            <span class="label">Distance Driven:</span>
+            <span id="kmCounter" class="value">0.0</span>
+            <span class="unit">km</span>
+          </div>
+          <div class="hud-item">
+            <span class="label">Score:</span>
+            <span id="score" class="value">0</span>
+            <span class="unit">pts</span>
+          </div>
         </div>
         <div id="warningTooClose" class="warning warning-danger hidden">⚠️ TOO CLOSE</div>
         <div id="warningSafe" class="warning warning-safe hidden">✓ SAFE DISTANCE</div>
+
+        <!-- Game Start Overlay -->
+        <div id="gameStartOverlay" class="game-start-overlay">
+          <h1>SAFE DISTANCE SIMULATOR</h1>
+          <div class="start-instructions">
+            <p><strong>A</strong> - Accelerate</p>
+            <p><strong>SPACE</strong> - Brake (hold for more power)</p>
+            <p class="start-hint">Press A or SPACE to start</p>
+          </div>
+        </div>
+
+        <!-- Top Center Score Display -->
+        <div class="score-overlay">
+          <div class="score-label">SCORE</div>
+          <div id="scoreOverlay" class="score-value-overlay">0</div>
+        </div>
       </div>
 
       <!-- Speedometer Gauge -->
@@ -81,8 +104,44 @@
               <span class="stat-label">Estimated Damage:</span>
               <span id="damage" class="stat-value damage-level">SEVERE</span>
             </div>
+            <div class="stat-row">
+              <span class="stat-label">Distance Driven:</span>
+              <span id="finalKm" class="stat-value">0.0 km</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Final Score:</span>
+              <span id="finalScore" class="stat-value">0 pts</span>
+            </div>
           </div>
           <button id="restartBtn" class="restart-btn">RESTART SIMULATION</button>
+          <button id="viewHighScoresBtn" class="view-scores-btn">VIEW HIGH SCORES</button>
+        </div>
+      </div>
+
+      <!-- High Score Name Input Overlay -->
+      <div id="highScoreNameInput" class="high-score-input hidden">
+        <div class="high-score-panel">
+          <h1>🏆 NEW HIGH SCORE! 🏆</h1>
+          <div class="high-score-message">
+            <p>Congratulations! Your score of <span id="newHighScore" class="highlight-score">0</span> pts</p>
+            <p>made it to the TOP 10!</p>
+          </div>
+          <div class="name-input-section">
+            <label for="playerNameInput">Enter Your Name:</label>
+            <input type="text" id="playerNameInput" maxlength="20" placeholder="Your Name" autocomplete="off">
+            <button id="submitNameBtn" class="submit-name-btn">SUBMIT</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- High Scores Display -->
+      <div id="highScoresDisplay" class="high-scores-display hidden">
+        <div class="high-scores-panel">
+          <h1>🏆 TOP 10 HIGH SCORES 🏆</h1>
+          <div class="high-scores-list" id="highScoresList">
+            <!-- High scores will be populated here -->
+          </div>
+          <button id="closeHighScoresBtn" class="close-scores-btn">CLOSE</button>
         </div>
       </div>
     </div>

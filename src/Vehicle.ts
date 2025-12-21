@@ -25,20 +25,18 @@ export class Vehicle {
     const group = new THREE.Group();
 
     // Car body (shortened for player vehicle)
-    const bodyLength = color === 0x0000ff ? 3 : 4; // Player car (blue) is shorter
-    const bodyGeometry = new THREE.BoxGeometry(2, 1, bodyLength);
+    const bodyLength = color === 0x0000ff ? 1.5 : 4; // Player car hood is much shorter
+    const bodyWidth = color === 0x0000ff ? 1.4 : 2; // Player car hood is narrower
+    const bodyGeometry = new THREE.BoxGeometry(bodyWidth, 1, bodyLength);
     const bodyMaterial = new THREE.MeshStandardMaterial({
       color,
-      // Make player car semi-transparent for first-person view
+      // Make player car hood semi-transparent to see wheels through it
       transparent: color === 0x0000ff,
-      opacity: color === 0x0000ff ? 0.1 : 1.0
+      opacity: color === 0x0000ff ? 0.4 : 1.0
     });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
     body.position.y = 0.5;
-    // Shift player car back so hood doesn't obstruct view
-    if (color === 0x0000ff) {
-      body.position.z = 0.5; // Move body back
-    }
+    // Don't shift player car body - keep it in normal position
     group.add(body);
 
     // Car cabin
@@ -52,7 +50,7 @@ export class Vehicle {
     const cabinMaterial = new THREE.MeshStandardMaterial({
       color: cabinColor,
       transparent: color === 0x0000ff,
-      opacity: color === 0x0000ff ? 0.1 : 1.0
+      opacity: color === 0x0000ff ? 0.3 : 1.0 // Semi-transparent for player to see through
     });
     const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
     cabin.position.y = 1.4;
