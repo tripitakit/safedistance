@@ -78,8 +78,10 @@ class SafeDistanceSimulator {
   private rearCar!: THREE.Group;
   private rearCamera!: THREE.PerspectiveCamera;
   private mirrorRenderTarget!: THREE.WebGLRenderTarget;
-  private rearCarDistance: number = 15; // Base distance behind player
-  private rearCarTargetDistance: number = 15;
+  private rearCarDistance: number = 12; // Base distance behind player
+  private rearCarTargetDistance: number = 10; // Following distance (6-18m range)
+  private rearCarVelocity: number = 0; // m/s - rear car has its own velocity
+  private rearCarPosition: number = 0; // Absolute position of rear car
 
   constructor() {
     this.scene = new THREE.Scene();
@@ -368,71 +370,54 @@ class SafeDistanceSimulator {
     windscreen.rotation.x = -0.2; // Slight angle
     this.rearCar.add(windscreen);
 
-    // HEADLIGHTS - very bright, large white areas visible in mirrors
-    // Since car is rotated 180°, front is at local -Z but faces player at +Z world
-    const headlightGeometry = new THREE.BoxGeometry(0.6, 0.4, 0.2);
+    // HEADLIGHTS - Large white rectangular planes at front of car
+    // Car is rotated 180°, so local +Z faces the player (visible in mirrors)
+    // Headlights at local +Z will appear at the front after rotation
     const headlightMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff // Pure white, unlit - always bright
-    });
-
-    // Left headlight housing
-    const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
-    leftHeadlight.position.set(-0.7, 0.55, -2.05);
-    this.rearCar.add(leftHeadlight);
-
-    // Right headlight housing
-    const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
-    rightHeadlight.position.set(0.7, 0.55, -2.05);
-    this.rearCar.add(rightHeadlight);
-
-    // Large bright lens circles - VERY visible white spots
-    const lensGeometry = new THREE.CircleGeometry(0.18, 16);
-    const lensMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+      color: 0xffffff, // Pure white, unlit - always bright
       side: THREE.DoubleSide
     });
 
-    const leftLens = new THREE.Mesh(lensGeometry, lensMaterial);
-    leftLens.position.set(-0.7, 0.55, -2.16);
-    this.rearCar.add(leftLens);
+    // Left headlight - large white rectangle (at local +Z, faces player after 180° rotation)
+    const leftHeadlightGeom = new THREE.PlaneGeometry(0.5, 0.3);
+    const leftHeadlight = new THREE.Mesh(leftHeadlightGeom, headlightMaterial);
+    leftHeadlight.position.set(-0.65, 0.5, 2.01); // At local +Z (will be front after rotation)
+    // No rotation needed - plane faces +Z by default, which after car rotation faces player
+    this.rearCar.add(leftHeadlight);
 
-    const rightLens = new THREE.Mesh(lensGeometry, lensMaterial);
-    rightLens.position.set(0.7, 0.55, -2.16);
-    this.rearCar.add(rightLens);
+    // Right headlight - large white rectangle
+    const rightHeadlightGeom = new THREE.PlaneGeometry(0.5, 0.3);
+    const rightHeadlight = new THREE.Mesh(rightHeadlightGeom, headlightMaterial);
+    rightHeadlight.position.set(0.65, 0.5, 2.01); // At local +Z (will be front after rotation)
+    this.rearCar.add(rightHeadlight);
 
-    // Secondary smaller lenses for dual-headlight look
-    const smallLensGeometry = new THREE.CircleGeometry(0.1, 16);
-
-    const leftLens2 = new THREE.Mesh(smallLensGeometry, lensMaterial);
-    leftLens2.position.set(-0.45, 0.55, -2.16);
-    this.rearCar.add(leftLens2);
-
-    const rightLens2 = new THREE.Mesh(smallLensGeometry, lensMaterial);
-    rightLens2.position.set(0.45, 0.55, -2.16);
-    this.rearCar.add(rightLens2);
-
-    // Emissive glow boxes behind lenses
-    const glowMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffffcc,
-      emissive: 0xffffaa,
-      emissiveIntensity: 8
+    // Inner headlight pair (dual headlight look)
+    const innerHeadlightMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffcc, // Slightly warm white
+      side: THREE.DoubleSide
     });
 
-    const leftGlow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.05), glowMaterial);
-    leftGlow.position.set(-0.6, 0.55, -2.1);
-    this.rearCar.add(leftGlow);
+    const leftInnerHeadlight = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.3, 0.25),
+      innerHeadlightMaterial
+    );
+    leftInnerHeadlight.position.set(-0.25, 0.5, 2.01);
+    this.rearCar.add(leftInnerHeadlight);
 
-    const rightGlow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.05), glowMaterial.clone());
-    rightGlow.position.set(0.6, 0.55, -2.1);
-    this.rearCar.add(rightGlow);
+    const rightInnerHeadlight = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.3, 0.25),
+      innerHeadlightMaterial
+    );
+    rightInnerHeadlight.position.set(0.25, 0.5, 2.01);
+    this.rearCar.add(rightInnerHeadlight);
 
-    // Strong point lights for headlight illumination
-    const leftLight = new THREE.PointLight(0xffffee, 5, 30);
-    leftLight.position.set(-0.7, 0.6, -2.5);
+    // Point lights for headlight glow effect (at local +Z)
+    const leftLight = new THREE.PointLight(0xffffee, 3, 25);
+    leftLight.position.set(-0.5, 0.6, 2.5);
     this.rearCar.add(leftLight);
 
-    const rightLight = new THREE.PointLight(0xffffee, 5, 30);
-    rightLight.position.set(0.7, 0.6, -2.5);
+    const rightLight = new THREE.PointLight(0xffffee, 3, 25);
+    rightLight.position.set(0.5, 0.6, 2.5);
     this.rearCar.add(rightLight);
 
     // Wheels
@@ -480,8 +465,8 @@ class SafeDistanceSimulator {
       format: THREE.RGBAFormat
     });
 
-    // Create rear-facing camera for mirror view - wide angle to capture more
-    this.rearCamera = new THREE.PerspectiveCamera(80, 2, 0.1, 150);
+    // Create rear-facing camera for mirror view - narrow FOV for flat/telephoto look
+    this.rearCamera = new THREE.PerspectiveCamera(25, 2, 0.1, 200);
 
     // Find and update mirror surfaces with render texture
     this.playerVehicle.mesh.children.forEach(child => {
@@ -497,45 +482,137 @@ class SafeDistanceSimulator {
   }
 
   private updateRearCar(deltaTime: number): void {
-    if (!this.rearCar) return;
+    if (!this.rearCar || this.isGameOver || this.isCrashing) return;
 
-    // Rear car follows player at varying distance
-    // Tailgates more aggressively at higher speeds
     const playerSpeed = this.playerVehicle.getVelocityKmh();
+    const playerSpeedMs = playerSpeed / 3.6; // Convert to m/s
+    const playerPos = this.playerVehicle.position;
 
-    // Random tailgating behavior - closer at higher speeds
-    if (Math.random() < 0.01) {
-      // Occasionally change target distance
-      const minDistance = Math.max(8, 20 - playerSpeed / 10);
-      const maxDistance = Math.max(15, 30 - playerSpeed / 8);
+    // Initialize rear car position if needed
+    if (this.rearCarPosition === 0) {
+      this.rearCarPosition = playerPos - this.rearCarDistance;
+      this.rearCarVelocity = playerSpeedMs;
+    }
+
+    // Moderate tailgating - follows at 6-18m
+    if (Math.random() < 0.02) {
+      const minDistance = Math.max(6, 10 - playerSpeed / 30); // Minimum 6m at high speed
+      const maxDistance = Math.max(18, 22 - playerSpeed / 20);
       this.rearCarTargetDistance = minDistance + Math.random() * (maxDistance - minDistance);
     }
 
-    // Smoothly approach target distance
-    this.rearCarDistance += (this.rearCarTargetDistance - this.rearCarDistance) * deltaTime * 0.5;
+    // Calculate current distance
+    const currentDistance = playerPos - this.rearCarPosition;
 
-    // Position rear car behind player
+    // Rear car AI: accelerate/brake based on distance to player
+    const distanceError = currentDistance - this.rearCarTargetDistance;
+
+    // Normal driver - reasonable reactions
+    let targetAcceleration = 0;
+    if (distanceError > 3) {
+      // Too far behind - accelerate to catch up
+      targetAcceleration = Math.min(5, distanceError * 1.0); // m/s²
+    } else if (distanceError < -0.5) {
+      // Getting too close - brake (slightly delayed reaction)
+      targetAcceleration = Math.max(-8, distanceError * 3); // Moderate reaction
+    } else {
+      // Match player speed
+      const speedDiff = playerSpeedMs - this.rearCarVelocity;
+      targetAcceleration = speedDiff * 2.5;
+    }
+
+    // Update rear car velocity with physics
+    this.rearCarVelocity += targetAcceleration * deltaTime;
+    this.rearCarVelocity = Math.max(0, Math.min(this.rearCarVelocity, 60)); // Cap at 216 km/h
+
+    // Update rear car position
+    this.rearCarPosition += this.rearCarVelocity * deltaTime;
+
+    // Calculate actual distance for collision detection
+    this.rearCarDistance = playerPos - this.rearCarPosition;
+
+    // COLLISION DETECTION - rear car crashes into player!
+    // Only possible if player brakes very hard (>60%) at close range - rare event
+    const collisionThreshold = 2.5; // Very close - almost touching
+    const playerBrakingVeryHard = this.inputController.getBrakingInput() > 0.6;
+    const speedDifference = this.rearCarVelocity - playerSpeedMs;
+    if (this.rearCarDistance < collisionThreshold && speedDifference > 5 && playerBrakingVeryHard) {
+      // Rear-end collision! Game over - player was hit from behind
+      this.triggerRearCollision();
+      return;
+    }
+
+    // Position rear car in 3D scene
     const playerZ = this.playerVehicle.mesh.position.z;
     this.rearCar.position.z = playerZ + this.rearCarDistance;
-    this.rearCar.position.x = (Math.sin(Date.now() * 0.001) * 0.5); // Slight weaving
+    this.rearCar.position.x = (Math.sin(Date.now() * 0.0015) * 0.3); // Slight weaving
+  }
+
+  private triggerRearCollision(): void {
+    if (this.isGameOver || this.isCrashing) return;
+
+    // Calculate impact data
+    const playerSpeedKmh = this.playerVehicle.getVelocityKmh();
+    const leadSpeedKmh = this.leadVehicle.getVelocityKmh();
+    const rearCarSpeedKmh = this.rearCarVelocity * 3.6; // Convert to km/h
+
+    // Check if player is tailgating the lead car - if so, they get sandwiched!
+    const distanceToLead = this.getDistance();
+    const tailgatingThreshold = 15; // If within 15m of lead car, player crashes into it too
+
+    // Mark as crashing
+    this.isCrashing = true;
+
+    const titleEl = document.querySelector('.crash-report h1');
+
+    if (distanceToLead < tailgatingThreshold) {
+      // SANDWICH CRASH - rear-ended into the lead car!
+      // Combined impact from both collisions
+      const rearSpeedDiff = Math.abs(rearCarSpeedKmh - playerSpeedKmh);
+      const frontSpeedDiff = Math.abs(playerSpeedKmh - leadSpeedKmh);
+      const totalSpeedDiff = rearSpeedDiff + frontSpeedDiff;
+
+      const mass = 1500;
+      const collisionDuration = 0.1;
+      const rearDeltaV = rearSpeedDiff / 3.6;
+      const frontDeltaV = frontSpeedDiff / 3.6;
+      const totalImpactForceKN = (mass * (rearDeltaV + frontDeltaV)) / collisionDuration / 1000;
+
+      if (titleEl) titleEl.textContent = '💥 SANDWICH CRASH - GAME OVER';
+      this.crashLeadSpeedElement.textContent = `${leadSpeedKmh.toFixed(1)} km/h`;
+
+      this.showCrashReport(totalImpactForceKN, totalSpeedDiff, playerSpeedKmh, leadSpeedKmh);
+    } else {
+      // Just rear-ended, not close enough to lead car
+      const speedDiffKmh = Math.abs(rearCarSpeedKmh - playerSpeedKmh);
+      const mass = 1500;
+      const collisionDuration = 0.1;
+      const deltaV = speedDiffKmh / 3.6;
+      const impactForceKN = (mass * deltaV) / collisionDuration / 1000;
+
+      if (titleEl) titleEl.textContent = '💥 REAR-ENDED - GAME OVER';
+      this.crashLeadSpeedElement.textContent = `${rearCarSpeedKmh.toFixed(1)} km/h (REAR)`;
+
+      this.showCrashReport(impactForceKN, speedDiffKmh, playerSpeedKmh, rearCarSpeedKmh);
+    }
   }
 
   private updateMirrors(): void {
     if (!this.rearCamera || !this.mirrorRenderTarget) return;
 
-    // Position rear camera behind player looking back
+    // Position rear camera - flat telephoto view for minimal perspective distortion
     const playerPos = this.playerVehicle.mesh.position;
     this.rearCamera.position.set(
       playerPos.x,
-      playerPos.y + 1.3,
-      playerPos.z + 1
+      playerPos.y + 1.2,
+      playerPos.z - 2 // Position slightly in front, looking back
     );
 
-    // Look backward (toward the rear car)
+    // Look backward (toward the rear car) - flat angle
     this.rearCamera.lookAt(
       playerPos.x,
-      playerPos.y + 1,
-      playerPos.z + 50
+      playerPos.y + 1.2,
+      playerPos.z + 100
     );
 
     // Hide player vehicle during mirror render

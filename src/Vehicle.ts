@@ -93,34 +93,50 @@ export class Vehicle {
         metalness: 0.8
       });
 
-      // LEFT SIDE MIRROR - large, flat, rectangular
-      const leftMirrorFrame = new THREE.BoxGeometry(0.5, 0.35, 0.05);
+      // LEFT SIDE MIRROR - slender horizontal, moved 25% toward center
+      const leftMirrorFrame = new THREE.BoxGeometry(0.40, 0.14, 0.04);
       const leftMirror = new THREE.Mesh(leftMirrorFrame, mirrorFrameMaterial);
-      leftMirror.position.set(-0.95, 1.1, -0.3);
+      leftMirror.position.set(-0.86, 1.05, -0.25);
       group.add(leftMirror);
 
-      // Left mirror surface - large flat rectangle facing backward
+      // Left mirror surface with UV offset for center-magnify effect
+      const leftMirrorGeom = new THREE.PlaneGeometry(0.36, 0.11);
+      // Modify UVs to show center portion of texture (magnify center/road area)
+      const leftUVs = leftMirrorGeom.attributes.uv;
+      for (let i = 0; i < leftUVs.count; i++) {
+        const u = leftUVs.getX(i);
+        // Compress U range to center portion (0.25-0.75 instead of 0-1)
+        leftUVs.setX(i, 0.25 + u * 0.5);
+      }
       const leftMirrorSurface = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.45, 0.30),
+        leftMirrorGeom,
         new THREE.MeshBasicMaterial({ color: 0x333344, side: THREE.DoubleSide })
       );
-      leftMirrorSurface.position.set(-0.95, 1.1, -0.27);
+      leftMirrorSurface.position.set(-0.86, 1.05, -0.23);
       leftMirrorSurface.rotation.y = Math.PI; // Face straight backward
       leftMirrorSurface.userData.isMirror = true;
       leftMirrorSurface.userData.mirrorType = 'left';
       group.add(leftMirrorSurface);
 
-      // RIGHT SIDE MIRROR - large, flat, rectangular
+      // RIGHT SIDE MIRROR - slender horizontal, moved 25% toward center
       const rightMirror = new THREE.Mesh(leftMirrorFrame.clone(), mirrorFrameMaterial);
-      rightMirror.position.set(0.95, 1.1, -0.3);
+      rightMirror.position.set(0.86, 1.05, -0.25);
       group.add(rightMirror);
 
-      // Right mirror surface - large flat rectangle facing backward
+      // Right mirror surface with UV offset for center-magnify effect
+      const rightMirrorGeom = new THREE.PlaneGeometry(0.36, 0.11);
+      // Modify UVs to show center portion of texture (magnify center/road area)
+      const rightUVs = rightMirrorGeom.attributes.uv;
+      for (let i = 0; i < rightUVs.count; i++) {
+        const u = rightUVs.getX(i);
+        // Compress U range to center portion (0.25-0.75 instead of 0-1)
+        rightUVs.setX(i, 0.25 + u * 0.5);
+      }
       const rightMirrorSurface = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.45, 0.30),
+        rightMirrorGeom,
         new THREE.MeshBasicMaterial({ color: 0x333344, side: THREE.DoubleSide })
       );
-      rightMirrorSurface.position.set(0.95, 1.1, -0.27);
+      rightMirrorSurface.position.set(0.86, 1.05, -0.23);
       rightMirrorSurface.rotation.y = Math.PI; // Face straight backward
       rightMirrorSurface.userData.isMirror = true;
       rightMirrorSurface.userData.mirrorType = 'right';
