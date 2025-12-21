@@ -1092,6 +1092,9 @@ class SafeDistanceSimulator {
       damageColor = '#ffaa00'; // Orange for MODERATE
     }
 
+    // Apply visual damage to the lead vehicle
+    this.leadVehicle.applyDamage(damageLevel);
+
     // Update crash report UI
     this.impactForceElement.textContent = `${impactForceKN.toFixed(1)} kN`;
     this.speedDiffElement.textContent = `${speedDiffKmh.toFixed(1)} km/h`;

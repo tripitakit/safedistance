@@ -241,4 +241,126 @@ export class Vehicle {
   public getBrakingPercent(): number {
     return Math.round(this.currentBraking * 100);
   }
+
+  /**
+   * Apply visual damage to the vehicle based on damage level
+   * @param damageLevel - 'MINOR' | 'MODERATE' | 'MAJOR' | 'SEVERE' | 'CATASTROPHIC'
+   */
+  public applyDamage(damageLevel: string): void {
+    // Damage intensity from 0 to 1
+    let intensity = 0;
+    switch (damageLevel) {
+      case 'MINOR': intensity = 0.2; break;
+      case 'MODERATE': intensity = 0.4; break;
+      case 'MAJOR': intensity = 0.6; break;
+      case 'SEVERE': intensity = 0.8; break;
+      case 'CATASTROPHIC': intensity = 1.0; break;
+    }
+
+    // Apply damage effects to all mesh children
+    this.mesh.children.forEach((child) => {
+      if (child instanceof THREE.Mesh) {
+        const material = child.material as THREE.MeshStandardMaterial;
+
+        // Skip wheels - they don't show body damage
+        if (child.userData.isWheel) return;
+
+        // Darken and add burnt/damaged look to materials
+        const damageColor = new THREE.Color(0x1a1a1a); // Dark burnt color
+        material.color.lerp(damageColor, intensity * 0.6);
+
+        // Add roughness (scratched/damaged surface)
+        material.roughness = Math.min(1, material.roughness + intensity * 0.5);
+
+        // Reduce metalness (damaged paint)
+        material.metalness = Math.max(0, (material.metalness || 0) - intensity * 0.3);
+
+        // Apply deformation based on position and damage level
+        // Rear of car (positive Z) gets most damage from rear-end collision
+        const zPos = child.position.z;
+
+        if (zPos > 0) {
+          // Rear section - most damage
+          const deformFactor = intensity * 0.3;
+
+          // Crush the rear (scale Z smaller, shift forward)
+          child.scale.z = Math.max(0.5, 1 - deformFactor);
+          child.position.z -= deformFactor * 0.5;
+
+          // Slight vertical crush
+          child.scale.y = Math.max(0.7, 1 - deformFactor * 0.5);
+
+          // Add slight random rotation for crumpled look
+          if (intensity > 0.5) {
+            child.rotation.x += (Math.random() - 0.5) * intensity * 0.1;
+            child.rotation.y += (Math.random() - 0.5) * intensity * 0.05;
+          }
+        }
+
+        // Add emissive for fire/heat effect on severe damage
+        if (intensity >= 0.8) {
+          material.emissive = new THREE.Color(0xff2200);
+          material.emissiveIntensity = (intensity - 0.7) * 0.5;
+        }
+      }
+    });
+
+    // Add smoke/dust particles for major damage
+    if (intensity >= 0.4) {
+      this.addDamageEffects(intensity);
+    }
+  }
+
+  private addDamageEffects(intensity: number): void {
+    // Add smoke wisps using small semi-transparent boxes
+    const smokeCount = Math.floor(intensity * 5);
+    const smokeMaterial = new THREE.MeshBasicMaterial({
+      color: 0x444444,
+      transparent: true,
+      opacity: 0.4
+    });
+
+    for (let i = 0; i < smokeCount; i++) {
+      const size = 0.3 + Math.random() * 0.4;
+      const smokeGeometry = new THREE.BoxGeometry(size, size * 2, size);
+      const smoke = new THREE.Mesh(smokeGeometry, smokeMaterial.clone());
+
+      // Position at rear of car with some randomness
+      smoke.position.set(
+        (Math.random() - 0.5) * 1.5,
+        1 + Math.random() * 1.5,
+        1.5 + Math.random() * 0.5
+      );
+
+      smoke.userData.isSmoke = true;
+      smoke.userData.riseSpeed = 0.5 + Math.random() * 0.5;
+      this.mesh.add(smoke);
+    }
+
+    // Add sparks/debris for severe damage
+    if (intensity >= 0.7) {
+      const debrisMaterial = new THREE.MeshBasicMaterial({
+        color: 0x333333
+      });
+
+      for (let i = 0; i < 8; i++) {
+        const debrisGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+        const debris = new THREE.Mesh(debrisGeometry, debrisMaterial);
+
+        debris.position.set(
+          (Math.random() - 0.5) * 2,
+          0.1 + Math.random() * 0.3,
+          1.8 + Math.random() * 0.5
+        );
+
+        debris.rotation.set(
+          Math.random() * Math.PI,
+          Math.random() * Math.PI,
+          Math.random() * Math.PI
+        );
+
+        this.mesh.add(debris);
+      }
+    }
+  }
 }
