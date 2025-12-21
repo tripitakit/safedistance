@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Safe Distance Simulator</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="canvas"></canvas>
+      <div id="hud">
+        <div class="hud-panel">
+          <div class="hud-item">
+            <span class="label">Your Speed:</span>
+            <span id="speed" class="value">0</span>
+            <span class="unit">km/h</span>
+          </div>
+          <div class="hud-item">
+            <span class="label">Lead Speed:</span>
+            <span id="leadSpeed" class="value">0</span>
+            <span class="unit">km/h</span>
+          </div>
+          <div class="hud-item">
+            <span class="label">Distance:</span>
+            <span id="distance" class="value">0</span>
+            <span class="unit">m</span>
+          </div>
+          <div class="hud-item">
+            <span class="label">Safe Distance:</span>
+            <span id="safeDistance" class="value">0</span>
+            <span class="unit">m</span>
+          </div>
+          <div class="hud-item">
+            <span class="label">Brake Pressure:</span>
+            <span id="brake" class="value">0</span>
+            <span class="unit">%</span>
+          </div>
+          <div class="hud-item">
+            <span class="label">Accelerator:</span>
+            <span id="accel" class="value">0</span>
+            <span class="unit">%</span>
+          </div>
+        </div>
+        <div class="instructions">
+          <p><strong>A</strong> - Accelerate | <strong>SPACE</strong> - Brake (hold for more power)</p>
+        </div>
+        <div id="warning" class="warning hidden">⚠️ TOO CLOSE</div>
+      </div>
+
+      <!-- Speedometer Gauge -->
+      <canvas id="speedometer" class="speedometer" width="200" height="200"></canvas>
+
+      <!-- Crash Flash Overlay -->
+      <div id="crashFlash" class="crash-flash hidden"></div>
+
+      <!-- Game Over Screen -->
+      <div id="gameOver" class="game-over hidden">
+        <div class="crash-report">
+          <h1>💥 COLLISION - GAME OVER</h1>
+          <div class="crash-details">
+            <h2>CRASH REPORT</h2>
+            <div class="stat-row">
+              <span class="stat-label">Impact Force:</span>
+              <span id="impactForce" class="stat-value">0 kN</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Speed Difference:</span>
+              <span id="speedDiff" class="stat-value">0 km/h</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Your Speed:</span>
+              <span id="crashYourSpeed" class="stat-value">0 km/h</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Lead Speed:</span>
+              <span id="crashLeadSpeed" class="stat-value">0 km/h</span>
+            </div>
+            <div class="stat-row damage-row">
+              <span class="stat-label">Estimated Damage:</span>
+              <span id="damage" class="stat-value damage-level">SEVERE</span>
+            </div>
+          </div>
+          <button id="restartBtn" class="restart-btn">RESTART SIMULATION</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

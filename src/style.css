@@ -1,0 +1,273 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+  background: #000;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+}
+
+#canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  color: #0f0;
+  text-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+}
+
+.hud-panel {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 20px;
+  border: 2px solid #0f0;
+  border-radius: 5px;
+}
+
+.hud-item {
+  margin: 10px 0;
+  font-size: 18px;
+}
+
+.label {
+  display: inline-block;
+  width: 150px;
+}
+
+.value {
+  display: inline-block;
+  width: 80px;
+  text-align: right;
+  font-weight: bold;
+  font-size: 24px;
+}
+
+.unit {
+  margin-left: 5px;
+  font-size: 14px;
+}
+
+.warning {
+  position: absolute;
+  top: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 0, 0, 0.9);
+  color: #fff;
+  padding: 20px 40px;
+  font-size: 36px;
+  font-weight: bold;
+  border: 3px solid #fff;
+  border-radius: 10px;
+  animation: pulse 0.5s infinite;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+}
+
+.warning.hidden {
+  display: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.instructions {
+  position: absolute;
+  top: 340px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 12px 20px;
+  border: 2px solid #0f0;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 13px;
+  max-width: 300px;
+}
+
+.instructions strong {
+  color: #ff0;
+  text-shadow: 0 0 10px rgba(255, 255, 0, 0.8);
+}
+
+/* Speedometer Gauge */
+.speedometer {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 200px;
+  height: 200px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 3px solid #0f0;
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+}
+
+/* Crash Flash Overlay */
+.crash-flash {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(255, 0, 0, 0.8);
+  z-index: 999;
+  pointer-events: none;
+  animation: crashFlash 0.2s ease-in-out infinite;
+}
+
+.crash-flash.hidden {
+  display: none;
+}
+
+@keyframes crashFlash {
+  0%, 100% {
+    opacity: 0;
+    background: rgba(255, 0, 0, 0.8);
+  }
+  50% {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.9);
+  }
+}
+
+/* Game Over Screen */
+.game-over {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  pointer-events: all;
+}
+
+.game-over.hidden {
+  display: none;
+}
+
+.crash-report {
+  background: linear-gradient(135deg, #1a0000 0%, #330000 100%);
+  border: 4px solid #ff0000;
+  border-radius: 15px;
+  padding: 40px;
+  max-width: 600px;
+  width: 90%;
+  box-shadow: 0 0 50px rgba(255, 0, 0, 0.5);
+  animation: crashAppear 0.5s ease-out;
+}
+
+@keyframes crashAppear {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.crash-report h1 {
+  color: #ff0000;
+  font-size: 42px;
+  text-align: center;
+  margin-bottom: 30px;
+  text-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+  animation: pulse 1s infinite;
+}
+
+.crash-report h2 {
+  color: #ff6666;
+  font-size: 24px;
+  margin-bottom: 20px;
+  text-align: center;
+  border-bottom: 2px solid #ff0000;
+  padding-bottom: 10px;
+}
+
+.crash-details {
+  background: rgba(0, 0, 0, 0.5);
+  padding: 25px;
+  border-radius: 10px;
+  margin-bottom: 30px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  margin: 15px 0;
+  font-size: 20px;
+  color: #fff;
+}
+
+.stat-label {
+  color: #ffaa00;
+  font-weight: bold;
+}
+
+.stat-value {
+  color: #ff0000;
+  font-weight: bold;
+  font-size: 24px;
+}
+
+.damage-row {
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 2px solid #ff0000;
+}
+
+.damage-level {
+  font-size: 32px;
+  text-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
+}
+
+.restart-btn {
+  width: 100%;
+  padding: 20px;
+  font-size: 24px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
+  color: #fff;
+  border: 3px solid #fff;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 5px 15px rgba(255, 0, 0, 0.4);
+}
+
+.restart-btn:hover {
+  background: linear-gradient(135deg, #ff3333 0%, #ff0000 100%);
+  transform: scale(1.05);
+  box-shadow: 0 8px 25px rgba(255, 0, 0, 0.6);
+}
+
+.restart-btn:active {
+  transform: scale(0.98);
+}
