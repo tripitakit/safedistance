@@ -80,7 +80,7 @@ export class Vehicle {
       group.add(wheel);
     });
 
-    // Add brake lights to LEAD vehicle only (yellow car)
+    // Add brake lights, rear windscreen, and license plate to LEAD vehicle only (yellow car)
     if (color === 0xffff00) {
       const brakeLightGeometry = new THREE.BoxGeometry(0.4, 0.3, 0.15);
       const brakeLightMaterial = new THREE.MeshStandardMaterial({
@@ -100,6 +100,54 @@ export class Vehicle {
       rightBrakeLight.position.set(0.8, 0.9, 2.1);
       rightBrakeLight.userData.isBrakeLight = true;
       group.add(rightBrakeLight);
+
+      // Rear windscreen (back window) - angled glass panel
+      const rearWindowGeometry = new THREE.PlaneGeometry(1.6, 0.7);
+      const rearWindowMaterial = new THREE.MeshStandardMaterial({
+        color: 0x88ccff,
+        transparent: true,
+        opacity: 0.4,
+        metalness: 0.9,
+        roughness: 0.1,
+        side: THREE.DoubleSide
+      });
+      const rearWindow = new THREE.Mesh(rearWindowGeometry, rearWindowMaterial);
+      rearWindow.position.set(0, 1.4, 1.05); // Flat at rear of cabin
+      group.add(rearWindow);
+
+      // License plate - white background with border
+      const plateGeometry = new THREE.PlaneGeometry(0.8, 0.25);
+      const plateMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.3
+      });
+      const plate = new THREE.Mesh(plateGeometry, plateMaterial);
+      plate.position.set(0, 0.45, 2.08);
+      group.add(plate);
+
+      // License plate border
+      const plateBorderGeometry = new THREE.PlaneGeometry(0.85, 0.3);
+      const plateBorderMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.5
+      });
+      const plateBorder = new THREE.Mesh(plateBorderGeometry, plateBorderMaterial);
+      plateBorder.position.set(0, 0.45, 2.07);
+      group.add(plateBorder);
+
+      // License plate text (simple dark rectangles to simulate characters)
+      const charGeometry = new THREE.PlaneGeometry(0.08, 0.12);
+      const charMaterial = new THREE.MeshStandardMaterial({
+        color: 0x111111,
+        roughness: 0.5
+      });
+      // Add 6 character blocks to simulate plate number
+      const charPositions = [-0.28, -0.17, -0.06, 0.06, 0.17, 0.28];
+      charPositions.forEach(xPos => {
+        const char = new THREE.Mesh(charGeometry, charMaterial);
+        char.position.set(xPos, 0.45, 2.09);
+        group.add(char);
+      });
     }
 
     return group;

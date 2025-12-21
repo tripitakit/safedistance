@@ -15,7 +15,6 @@ export class LeadVehicleAI {
 
   // Speed limits and patterns
   private readonly MIN_SPEED = 30; // km/h
-  private readonly MAX_SPEED = 180; // km/h
   private readonly CRUISE_SPEED = 130; // km/h
 
   constructor(vehicle: Vehicle) {
@@ -42,7 +41,7 @@ export class LeadVehicleAI {
     this.vehicle.update(deltaTime);
   }
 
-  private updateAccelerating(deltaTime: number): void {
+  private updateAccelerating(_deltaTime: number): void {
     const currentSpeed = this.vehicle.getVelocityKmh();
 
     if (currentSpeed < this.targetSpeed) {
@@ -56,7 +55,7 @@ export class LeadVehicleAI {
     }
   }
 
-  private updateCruising(deltaTime: number): void {
+  private updateCruising(_deltaTime: number): void {
     const currentSpeed = this.vehicle.getVelocityKmh();
 
     // Maintain speed
@@ -92,7 +91,7 @@ export class LeadVehicleAI {
     }
   }
 
-  private updateBraking(deltaTime: number): void {
+  private updateBraking(_deltaTime: number): void {
     const currentSpeed = this.vehicle.getVelocityKmh();
 
     // Apply braking

@@ -192,6 +192,127 @@ class SafeDistanceSimulator {
     // Sky gradient
     this.scene.background = new THREE.Color(0x87ceeb);
     this.scene.fog = new THREE.Fog(0x87ceeb, 50, 300);
+
+    // Add distant hills and mountains on the horizon
+    this.createHorizon();
+  }
+
+  private createHorizon(): void {
+    // Create a group for the horizon that moves with the camera (stays on horizon)
+    const horizonGroup = new THREE.Group();
+
+    // Mountain material - bluish-gray to blend with fog/sky
+    const mountainMaterial = new THREE.MeshStandardMaterial({
+      color: 0x5a6a7a,
+      roughness: 0.9,
+      flatShading: true
+    });
+
+    // Darker mountain material for closer peaks
+    const mountainMaterialDark = new THREE.MeshStandardMaterial({
+      color: 0x4a5a6a,
+      roughness: 0.9,
+      flatShading: true
+    });
+
+    // Hill material - slightly greener
+    const hillMaterial = new THREE.MeshStandardMaterial({
+      color: 0x5a7a6a,
+      roughness: 0.9,
+      flatShading: true
+    });
+
+    // Create mountain chain on both sides of the road
+    // Left side mountains (negative X)
+    const leftMountains = this.createMountainChain(-200, mountainMaterial, mountainMaterialDark);
+    horizonGroup.add(leftMountains);
+
+    // Right side mountains (positive X)
+    const rightMountains = this.createMountainChain(200, mountainMaterial, mountainMaterialDark);
+    horizonGroup.add(rightMountains);
+
+    // Add rolling hills in front of mountains (closer, lower)
+    const leftHills = this.createHillChain(-120, hillMaterial);
+    horizonGroup.add(leftHills);
+
+    const rightHills = this.createHillChain(120, hillMaterial);
+    horizonGroup.add(rightHills);
+
+    // Store reference for camera-relative positioning
+    (this as any).horizonGroup = horizonGroup;
+    this.scene.add(horizonGroup);
+  }
+
+  private createMountainChain(xOffset: number, material: THREE.Material, materialDark: THREE.Material): THREE.Group {
+    const chain = new THREE.Group();
+
+    // Create a series of mountain peaks at varying heights and positions
+    const mountainData = [
+      { z: -250, height: 80, radius: 60 },
+      { z: -180, height: 100, radius: 70 },
+      { z: -120, height: 70, radius: 50 },
+      { z: -50, height: 90, radius: 65 },
+      { z: 20, height: 75, radius: 55 },
+      { z: 100, height: 110, radius: 80 },
+      { z: 180, height: 85, radius: 60 },
+      { z: 260, height: 95, radius: 70 },
+    ];
+
+    mountainData.forEach((data, index) => {
+      // Main peak
+      const geometry = new THREE.ConeGeometry(data.radius, data.height, 6);
+      const mat = index % 2 === 0 ? material : materialDark;
+      const mountain = new THREE.Mesh(geometry, mat);
+      mountain.position.set(
+        xOffset + (Math.random() - 0.5) * 40,
+        data.height / 2,
+        data.z
+      );
+      chain.add(mountain);
+
+      // Add a secondary smaller peak nearby for variety
+      const smallRadius = data.radius * 0.6;
+      const smallHeight = data.height * 0.7;
+      const smallGeometry = new THREE.ConeGeometry(smallRadius, smallHeight, 5);
+      const smallMountain = new THREE.Mesh(smallGeometry, mat);
+      smallMountain.position.set(
+        xOffset + (index % 2 === 0 ? 30 : -30) + (Math.random() - 0.5) * 20,
+        smallHeight / 2,
+        data.z + 30
+      );
+      chain.add(smallMountain);
+    });
+
+    return chain;
+  }
+
+  private createHillChain(xOffset: number, material: THREE.Material): THREE.Group {
+    const chain = new THREE.Group();
+
+    // Create rolling hills using flattened spheres
+    const hillData = [
+      { z: -220, height: 15, radius: 40 },
+      { z: -150, height: 20, radius: 50 },
+      { z: -80, height: 12, radius: 35 },
+      { z: -10, height: 18, radius: 45 },
+      { z: 60, height: 25, radius: 55 },
+      { z: 140, height: 16, radius: 40 },
+      { z: 220, height: 22, radius: 48 },
+    ];
+
+    hillData.forEach((data) => {
+      const geometry = new THREE.SphereGeometry(data.radius, 8, 6);
+      const hill = new THREE.Mesh(geometry, material);
+      hill.scale.y = data.height / data.radius; // Flatten to hill shape
+      hill.position.set(
+        xOffset + (Math.random() - 0.5) * 30,
+        -data.height * 0.5, // Sink to half height for domed appearance
+        data.z
+      );
+      chain.add(hill);
+    });
+
+    return chain;
   }
 
   private setupLighting(): void {
@@ -669,6 +790,12 @@ class SafeDistanceSimulator {
       this.playerVehicle.mesh.position.y + 1.2,
       this.playerVehicle.mesh.position.z - 100 // Look far ahead
     );
+
+    // Keep horizon (hills/mountains) at fixed distance from camera
+    const horizonGroup = (this as any).horizonGroup;
+    if (horizonGroup) {
+      horizonGroup.position.z = this.playerVehicle.mesh.position.z;
+    }
   }
 
   private updateRoad(): void {
