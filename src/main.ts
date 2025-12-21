@@ -12,8 +12,9 @@ class SafeDistanceSimulator {
   private leadVehicle: Vehicle;
   private leadVehicleAI: LeadVehicleAI;
   private inputController: InputController;
-  private road: THREE.Group;
-  private roadMarkings: THREE.Group;
+  private road!: THREE.Group;
+  private roadMarkings!: THREE.Group;
+  private environment!: THREE.Group;
 
   private lastTime: number = 0;
 
@@ -24,9 +25,14 @@ class SafeDistanceSimulator {
   private safeDistanceElement: HTMLElement;
   private brakeElement: HTMLElement;
   private accelElement: HTMLElement;
-  private warningElement: HTMLElement;
+  private warningTooCloseElement: HTMLElement;
+  private warningSafeElement: HTMLElement;
   private speedometerCanvas: HTMLCanvasElement;
   private speedometerCtx: CanvasRenderingContext2D;
+
+  // Warning state
+  private warningTimeout: number | null = null;
+  private lastWarningState: 'safe' | 'danger' | null = null;
 
   // Game Over elements
   private gameOverElement: HTMLElement;
@@ -66,7 +72,8 @@ class SafeDistanceSimulator {
     this.safeDistanceElement = document.getElementById('safeDistance')!;
     this.brakeElement = document.getElementById('brake')!;
     this.accelElement = document.getElementById('accel')!;
-    this.warningElement = document.getElementById('warning')!;
+    this.warningTooCloseElement = document.getElementById('warningTooClose')!;
+    this.warningSafeElement = document.getElementById('warningSafe')!;
     this.speedometerCanvas = document.getElementById('speedometer') as HTMLCanvasElement;
     this.speedometerCtx = this.speedometerCanvas.getContext('2d')!;
 
@@ -87,6 +94,8 @@ class SafeDistanceSimulator {
     this.setupLighting();
     this.road = this.createRoad();
     this.scene.add(this.road);
+    this.environment = this.createEnvironment();
+    this.scene.add(this.environment);
 
     // Create vehicles with realistic parameters
     const vehicleConfig: VehicleConfig = {
@@ -227,6 +236,189 @@ class SafeDistanceSimulator {
     return roadGroup;
   }
 
+  private createTree(): THREE.Group {
+    const tree = new THREE.Group();
+
+    // Tree trunk
+    const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.4, 4, 8);
+    const trunkMaterial = new THREE.MeshStandardMaterial({
+      color: 0x8b4513,
+      roughness: 0.8
+    });
+    const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+    trunk.position.y = 2;
+    trunk.castShadow = true;
+    tree.add(trunk);
+
+    // Tree foliage (3 spheres stacked for better tree shape)
+    const foliageMaterial = new THREE.MeshStandardMaterial({
+      color: 0x228b22,
+      roughness: 0.7
+    });
+
+    const foliage1 = new THREE.Mesh(
+      new THREE.SphereGeometry(2, 8, 8),
+      foliageMaterial
+    );
+    foliage1.position.y = 5;
+    foliage1.castShadow = true;
+    tree.add(foliage1);
+
+    const foliage2 = new THREE.Mesh(
+      new THREE.SphereGeometry(1.5, 8, 8),
+      foliageMaterial
+    );
+    foliage2.position.y = 6.5;
+    foliage2.castShadow = true;
+    tree.add(foliage2);
+
+    const foliage3 = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 8, 8),
+      foliageMaterial
+    );
+    foliage3.position.y = 7.5;
+    foliage3.castShadow = true;
+    tree.add(foliage3);
+
+    return tree;
+  }
+
+  private createHouse(): THREE.Group {
+    const house = new THREE.Group();
+
+    // House walls
+    const wallGeometry = new THREE.BoxGeometry(6, 4, 6);
+    const wallMaterial = new THREE.MeshStandardMaterial({
+      color: 0xd2b48c,
+      roughness: 0.8
+    });
+    const walls = new THREE.Mesh(wallGeometry, wallMaterial);
+    walls.position.y = 2;
+    walls.castShadow = true;
+    house.add(walls);
+
+    // Roof (pyramid shape)
+    const roofGeometry = new THREE.ConeGeometry(4.5, 2.5, 4);
+    const roofMaterial = new THREE.MeshStandardMaterial({
+      color: 0x8b0000,
+      roughness: 0.6
+    });
+    const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+    roof.position.y = 5.25;
+    roof.rotation.y = Math.PI / 4;
+    roof.castShadow = true;
+    house.add(roof);
+
+    // Door
+    const doorGeometry = new THREE.BoxGeometry(1.2, 2, 0.1);
+    const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x654321 });
+    const door = new THREE.Mesh(doorGeometry, doorMaterial);
+    door.position.set(0, 1, 3.05);
+    house.add(door);
+
+    // Windows
+    const windowGeometry = new THREE.BoxGeometry(1, 1, 0.1);
+    const windowMaterial = new THREE.MeshStandardMaterial({ color: 0x87ceeb });
+
+    const window1 = new THREE.Mesh(windowGeometry, windowMaterial);
+    window1.position.set(-1.8, 2.5, 3.05);
+    house.add(window1);
+
+    const window2 = new THREE.Mesh(windowGeometry, windowMaterial);
+    window2.position.set(1.8, 2.5, 3.05);
+    house.add(window2);
+
+    return house;
+  }
+
+  private createBush(): THREE.Group {
+    const bush = new THREE.Group();
+
+    // Bush is a flattened sphere with multiple segments for organic look
+    const bushGeometry = new THREE.SphereGeometry(1.2, 8, 6);
+    const bushMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2d5016,
+      roughness: 0.9
+    });
+    const bushMesh = new THREE.Mesh(bushGeometry, bushMaterial);
+    bushMesh.scale.y = 0.7; // Flatten slightly
+    bushMesh.position.y = 0.8;
+    bushMesh.castShadow = true;
+    bush.add(bushMesh);
+
+    // Add smaller sphere for variation
+    const bush2 = new THREE.Mesh(
+      new THREE.SphereGeometry(0.8, 8, 6),
+      bushMaterial
+    );
+    bush2.position.set(0.6, 0.6, 0.3);
+    bush2.scale.y = 0.7;
+    bush2.castShadow = true;
+    bush.add(bush2);
+
+    return bush;
+  }
+
+  private createEnvironment(): THREE.Group {
+    const envGroup = new THREE.Group();
+    const roadLength = 2000;
+    const spacing = 30; // Distance between objects
+
+    // Place objects along the road
+    for (let z = -roadLength / 2; z < roadLength / 2; z += spacing) {
+      // Randomize which objects appear and their exact position
+      const random = Math.random();
+      const offset = (Math.random() - 0.5) * 5; // Random offset for variety
+
+      // Left side of road
+      if (random < 0.3) {
+        // Tree
+        const tree = this.createTree();
+        tree.position.set(-12 + offset, 0, z);
+        tree.rotation.y = Math.random() * Math.PI * 2;
+        envGroup.add(tree);
+      } else if (random < 0.4) {
+        // House (less frequent)
+        const house = this.createHouse();
+        house.position.set(-18 + offset, 0, z);
+        house.rotation.y = Math.random() * Math.PI * 2;
+        envGroup.add(house);
+      } else if (random < 0.6) {
+        // Bush
+        const bush = this.createBush();
+        bush.position.set(-11 + offset, 0, z);
+        bush.rotation.y = Math.random() * Math.PI * 2;
+        envGroup.add(bush);
+      }
+
+      // Right side of road (different random seed)
+      const random2 = Math.random();
+      const offset2 = (Math.random() - 0.5) * 5;
+
+      if (random2 < 0.3) {
+        // Tree
+        const tree = this.createTree();
+        tree.position.set(12 + offset2, 0, z);
+        tree.rotation.y = Math.random() * Math.PI * 2;
+        envGroup.add(tree);
+      } else if (random2 < 0.4) {
+        // House
+        const house = this.createHouse();
+        house.position.set(18 + offset2, 0, z);
+        house.rotation.y = Math.random() * Math.PI * 2;
+        envGroup.add(house);
+      } else if (random2 < 0.6) {
+        // Bush
+        const bush = this.createBush();
+        bush.position.set(11 + offset2, 0, z);
+        bush.rotation.y = Math.random() * Math.PI * 2;
+        envGroup.add(bush);
+      }
+    }
+
+    return envGroup;
+  }
+
   private setupCamera(): void {
     // First-person camera position (inside player's car)
     // Camera is at the driver's seat position
@@ -278,6 +470,10 @@ class SafeDistanceSimulator {
     // Positive Z moves markings toward camera (correct direction for driving forward)
     const markingOffset = playerPos % dashPattern;
     this.roadMarkings.position.z = markingOffset;
+
+    // Animate environment objects (trees, houses, bushes) to scroll backwards
+    // Objects should move toward camera (positive Z) as player drives forward
+    this.environment.position.z = roadOffset;
   }
 
   private updateHUD(): void {
@@ -295,11 +491,37 @@ class SafeDistanceSimulator {
     this.brakeElement.textContent = brake.toString();
     this.accelElement.textContent = accel.toString();
 
-    // Update warning - only show if too close (not during collision message)
-    if (distance < safeDistance && distance > 0 && this.warningElement.textContent === '⚠️ TOO CLOSE') {
-      this.warningElement.classList.remove('hidden');
-    } else if (this.warningElement.textContent === '⚠️ TOO CLOSE') {
-      this.warningElement.classList.add('hidden');
+    // Update timed warnings based on distance state changes
+    const currentState = distance < safeDistance && distance > 0 ? 'danger' : 'safe';
+
+    // Only trigger warning if state changed
+    if (currentState !== this.lastWarningState && !this.isCrashing) {
+      // Clear any existing warning timer
+      if (this.warningTimeout !== null) {
+        clearTimeout(this.warningTimeout);
+        this.warningTimeout = null;
+      }
+
+      // Hide both warnings first
+      this.warningTooCloseElement.classList.add('hidden');
+      this.warningSafeElement.classList.add('hidden');
+
+      // Show the appropriate warning
+      if (currentState === 'danger') {
+        this.warningTooCloseElement.classList.remove('hidden');
+      } else if (this.lastWarningState === 'danger') {
+        // Only show "safe" message if we were previously in danger
+        this.warningSafeElement.classList.remove('hidden');
+      }
+
+      // Set timer to hide warning after 3 seconds
+      this.warningTimeout = window.setTimeout(() => {
+        this.warningTooCloseElement.classList.add('hidden');
+        this.warningSafeElement.classList.add('hidden');
+        this.warningTimeout = null;
+      }, 3000);
+
+      this.lastWarningState = currentState;
     }
 
     // Update speedometer gauge
