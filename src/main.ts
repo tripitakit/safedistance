@@ -4,6 +4,7 @@ import { Vehicle, VehicleConfig } from './Vehicle';
 import { LeadVehicleAI } from './LeadVehicleAI';
 import { InputController } from './InputController';
 import { HighScoreManager } from './HighScoreManager';
+import { AudioEngine } from './AudioEngine';
 
 class SafeDistanceSimulator {
   private scene: THREE.Scene;
@@ -91,6 +92,9 @@ class SafeDistanceSimulator {
   private readonly ONCOMING_SPAWN_AHEAD = 280; // Spawn just inside fog
   private readonly ONCOMING_DESPAWN_BEHIND = 30; // Remove after passing
   private readonly MIN_CAR_SPACING = 60; // Minimum gap between cars
+
+  // Audio engine
+  private audioEngine: AudioEngine;
 
   constructor() {
     this.scene = new THREE.Scene();
@@ -207,6 +211,9 @@ class SafeDistanceSimulator {
 
     // Hide loading screen after initialization
     this.hideLoadingScreen();
+
+    // Initialize audio engine (will start on first user input)
+    this.audioEngine = new AudioEngine();
 
     this.animate(0);
   }
@@ -617,6 +624,10 @@ class SafeDistanceSimulator {
       if (titleEl) titleEl.textContent = '💥 SANDWICH CRASH - GAME OVER';
       this.crashLeadSpeedElement.textContent = `${leadSpeedKmh.toFixed(1)} km/h`;
 
+      // Play crash sound and stop engine
+      this.audioEngine.playCrashSound(totalImpactForceKN, totalSpeedDiff);
+      this.audioEngine.stopEngine();
+
       this.showCrashReport(totalImpactForceKN, totalSpeedDiff, playerSpeedKmh, leadSpeedKmh);
     } else {
       // Just rear-ended, not close enough to lead car
@@ -628,6 +639,10 @@ class SafeDistanceSimulator {
 
       if (titleEl) titleEl.textContent = '💥 REAR-ENDED - GAME OVER';
       this.crashLeadSpeedElement.textContent = `${rearCarSpeedKmh.toFixed(1)} km/h (REAR)`;
+
+      // Play crash sound and stop engine
+      this.audioEngine.playCrashSound(impactForceKN, speedDiffKmh);
+      this.audioEngine.stopEngine();
 
       this.showCrashReport(impactForceKN, speedDiffKmh, playerSpeedKmh, rearCarSpeedKmh);
     }
@@ -1571,6 +1586,12 @@ class SafeDistanceSimulator {
         // Mark as crashing (physics continues during flash)
         this.isCrashing = true;
 
+        // Play crash sound and stop engine
+        const impactForceKN = impactForce / 1000;
+        const speedDiffKmh = relativeVelocity * 3.6;
+        this.audioEngine.playCrashSound(impactForceKN, speedDiffKmh);
+        this.audioEngine.stopEngine();
+
         // Show crash report with flash animation
         this.showCrashReport(
           impactForce / 1000, // Convert to kN
@@ -1739,6 +1760,10 @@ class SafeDistanceSimulator {
       if (acceleration > 0 || braking > 0) {
         this.gameStarted = true;
         this.gameStartOverlayElement.classList.add('hidden');
+
+        // Start audio engine on first user input (required by browser policy)
+        this.audioEngine.init();
+        this.audioEngine.startEngine();
       }
     }
 
@@ -1755,6 +1780,13 @@ class SafeDistanceSimulator {
       this.playerVehicle.setBraking(0);
     }
     this.playerVehicle.update(clampedDelta);
+
+    // Update engine sound based on speed and acceleration
+    if (this.gameStarted && !this.isGameOver) {
+      const speedKmh = this.playerVehicle.getVelocityKmh();
+      const accelInput = this.inputController.getAccelerationInput();
+      this.audioEngine.updateEngine(speedKmh, accelInput);
+    }
 
     // Update lead vehicle AI (unless crashing)
     if (!this.isCrashing) {
