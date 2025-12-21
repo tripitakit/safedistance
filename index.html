@@ -5,8 +5,49 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Safe Distance Simulator</title>
+    <!-- Critical inline styles for instant loading screen -->
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+      #app { display: none; }
+      .loading-screen {
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background: linear-gradient(135deg, #000 0%, #001a00 50%, #000 100%);
+        display: flex; justify-content: center; align-items: center; z-index: 9999;
+      }
+      .loading-content { text-align: center; }
+      .loading-content h1 {
+        color: #0f0; font-size: 64px; font-weight: bold;
+        text-shadow: 0 0 30px rgba(0,255,0,0.8), 0 0 60px rgba(0,255,0,0.4);
+        margin-bottom: 40px; letter-spacing: 8px;
+        animation: lp 1.5s ease-in-out infinite;
+      }
+      @keyframes lp { 0%,100%{opacity:1} 50%{opacity:0.7} }
+      .loading-bar {
+        width: 300px; height: 8px; background: rgba(0,255,0,0.2);
+        border: 2px solid #0f0; border-radius: 4px; margin: 0 auto 20px; overflow: hidden;
+      }
+      .loading-progress {
+        height: 100%; width: 0%; background: linear-gradient(90deg, #0f0, #0ff, #0f0);
+        background-size: 200% 100%; animation: lb 1.5s ease-in-out infinite;
+      }
+      @keyframes lb { 0%{width:0%} 50%{width:70%} 100%{width:100%} }
+      .loading-text { color: #0f0; font-size: 18px; letter-spacing: 4px; animation: lt 0.8s ease-in-out infinite; }
+      @keyframes lt { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    </style>
   </head>
   <body>
+    <!-- Loading Screen - shows immediately -->
+    <div id="loadingScreen" class="loading-screen">
+      <div class="loading-content">
+        <h1>SAFE DISTANCE</h1>
+        <div class="loading-bar">
+          <div class="loading-progress"></div>
+        </div>
+        <p class="loading-text">INITIALIZING...</p>
+      </div>
+    </div>
+
     <div id="app">
       <canvas id="canvas"></canvas>
       <div id="hud">

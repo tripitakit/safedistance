@@ -83,6 +83,15 @@ class SafeDistanceSimulator {
   private rearCarVelocity: number = 0; // m/s - rear car has its own velocity
   private rearCarPosition: number = 0; // Absolute position of rear car
 
+  // Oncoming traffic system (left lane)
+  private oncomingCars: THREE.Group[] = [];
+  private oncomingCarPositions: number[] = []; // World positions (meters along road)
+  private oncomingCarSpeeds: number[] = []; // m/s (positive = toward player)
+  private readonly ONCOMING_LANE_X = -2.5;
+  private readonly ONCOMING_SPAWN_AHEAD = 280; // Spawn just inside fog
+  private readonly ONCOMING_DESPAWN_BEHIND = 30; // Remove after passing
+  private readonly MIN_CAR_SPACING = 60; // Minimum gap between cars
+
   constructor() {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(
@@ -176,13 +185,15 @@ class SafeDistanceSimulator {
       leadInitialSpeedMs * this.SAFE_DISTANCE_FACTOR + leadInitialSpeedMs * 0.5
     );
 
-    // Position lead vehicle ahead at safe distance
+    // Position lead vehicle ahead at safe distance in right lane
     this.leadVehicle.position = safeStartDistance;
     this.leadVehicle.mesh.position.z = -safeStartDistance;
+    this.leadVehicle.mesh.position.x = 2.5; // Right lane
 
     // Create player vehicle at origin, matching lead vehicle's initial speed
     this.playerVehicle = new Vehicle(vehicleConfig, 0x0000ff); // Blue car
     this.playerVehicle.setVelocity(this.leadVehicle.getVelocityKmh()); // Start at same speed
+    this.playerVehicle.mesh.position.x = 2.5; // Right lane
     this.scene.add(this.playerVehicle.mesh);
 
     // Create rear car that tailgates the player
@@ -194,7 +205,31 @@ class SafeDistanceSimulator {
     this.setupCamera();
     this.setupWindowResize();
 
+    // Hide loading screen after initialization
+    this.hideLoadingScreen();
+
     this.animate(0);
+  }
+
+  private hideLoadingScreen(): void {
+    const loadingScreen = document.getElementById('loadingScreen');
+    const app = document.getElementById('app');
+
+    // Show the app (hidden by default in inline styles)
+    if (app) {
+      app.style.display = 'block';
+    }
+
+    if (loadingScreen) {
+      // Small delay to ensure first frame renders
+      setTimeout(() => {
+        loadingScreen.classList.add('hidden');
+        // Remove from DOM after fade out
+        setTimeout(() => {
+          loadingScreen.remove();
+        }, 500);
+      }, 100);
+    }
   }
 
   private setupScene(): void {
@@ -453,6 +488,7 @@ class SafeDistanceSimulator {
 
     // Position rear car behind player and rotate to face player
     this.rearCar.position.z = this.rearCarDistance;
+    this.rearCar.position.x = 2.5; // Right lane
     this.rearCar.rotation.y = Math.PI; // Rotate 180° so front faces the player
     this.scene.add(this.rearCar);
   }
@@ -542,10 +578,10 @@ class SafeDistanceSimulator {
       return;
     }
 
-    // Position rear car in 3D scene
+    // Position rear car in 3D scene (right lane with slight weaving)
     const playerZ = this.playerVehicle.mesh.position.z;
     this.rearCar.position.z = playerZ + this.rearCarDistance;
-    this.rearCar.position.x = (Math.sin(Date.now() * 0.0015) * 0.3); // Slight weaving
+    this.rearCar.position.x = 2.5 + (Math.sin(Date.now() * 0.0015) * 0.3); // Right lane with slight weaving
   }
 
   private triggerRearCollision(): void {
@@ -594,6 +630,167 @@ class SafeDistanceSimulator {
       this.crashLeadSpeedElement.textContent = `${rearCarSpeedKmh.toFixed(1)} km/h (REAR)`;
 
       this.showCrashReport(impactForceKN, speedDiffKmh, playerSpeedKmh, rearCarSpeedKmh);
+    }
+  }
+
+  private createOncomingCarModel(): THREE.Group {
+    const car = new THREE.Group();
+
+    // Random car colors (common car colors)
+    const carColors = [0xffffff, 0xcccccc, 0x888888, 0x333333, 0x2244aa, 0x882222];
+    const bodyColor = carColors[Math.floor(Math.random() * carColors.length)];
+
+    // Car body
+    const bodyGeometry = new THREE.BoxGeometry(2, 1, 4);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+      color: bodyColor,
+      roughness: 0.3,
+      metalness: 0.7
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 0.5;
+    car.add(body);
+
+    // Cabin
+    const cabinGeometry = new THREE.BoxGeometry(1.8, 0.8, 2);
+    const cabinMaterial = new THREE.MeshStandardMaterial({
+      color: 0x222222,
+      roughness: 0.3,
+      metalness: 0.6
+    });
+    const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
+    cabin.position.y = 1.4;
+    cabin.position.z = -0.5;
+    car.add(cabin);
+
+    // Front windscreen
+    const windscreenGeometry = new THREE.PlaneGeometry(1.6, 0.7);
+    const windscreenMaterial = new THREE.MeshStandardMaterial({
+      color: 0x88ccff,
+      transparent: true,
+      opacity: 0.5,
+      metalness: 0.9,
+      roughness: 0.1,
+      side: THREE.DoubleSide
+    });
+    const windscreen = new THREE.Mesh(windscreenGeometry, windscreenMaterial);
+    windscreen.position.set(0, 1.4, -1.55);
+    windscreen.rotation.x = -0.2;
+    car.add(windscreen);
+
+    // Headlights at front (local -Z) - facing toward player
+    const headlightMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide
+    });
+
+    const leftHeadlight = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.5, 0.3),
+      headlightMaterial
+    );
+    leftHeadlight.position.set(-0.65, 0.5, -2.01);
+    car.add(leftHeadlight);
+
+    const rightHeadlight = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.5, 0.3),
+      headlightMaterial
+    );
+    rightHeadlight.position.set(0.65, 0.5, -2.01);
+    car.add(rightHeadlight);
+
+    // Point lights for headlight glow
+    const leftLight = new THREE.PointLight(0xffffee, 2, 20);
+    leftLight.position.set(-0.5, 0.6, -2.5);
+    car.add(leftLight);
+
+    const rightLight = new THREE.PointLight(0xffffee, 2, 20);
+    rightLight.position.set(0.5, 0.6, -2.5);
+    car.add(rightLight);
+
+    // Wheels
+    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+    const wheelMaterial = new THREE.MeshStandardMaterial({
+      color: 0x222222,
+      roughness: 0.8
+    });
+
+    const wheelPositions = [
+      [-0.9, 0.4, 1.2],
+      [0.9, 0.4, 1.2],
+      [-0.9, 0.4, -1.2],
+      [0.9, 0.4, -1.2]
+    ];
+
+    wheelPositions.forEach(pos => {
+      const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(pos[0], pos[1], pos[2]);
+      car.add(wheel);
+    });
+
+    // Position in left lane and rotate to face player (front toward positive Z)
+    car.position.x = this.ONCOMING_LANE_X;
+    car.rotation.y = Math.PI; // Rotate 180° so headlights face the player
+
+    return car;
+  }
+
+  private spawnOncomingCar(): void {
+    const playerPos = this.playerVehicle.position;
+
+    // Check if we need to spawn (enough space from last car)
+    if (this.oncomingCarPositions.length > 0) {
+      const lastCarPos = this.oncomingCarPositions[this.oncomingCarPositions.length - 1];
+      const distanceFromLast = Math.abs(lastCarPos - (playerPos + this.ONCOMING_SPAWN_AHEAD));
+      if (distanceFromLast < this.MIN_CAR_SPACING) {
+        return; // Too close to last spawned car
+      }
+    }
+
+    // Create new car
+    const car = this.createOncomingCarModel();
+
+    // Position ahead of player (in negative Z world space)
+    const spawnPosition = playerPos + this.ONCOMING_SPAWN_AHEAD;
+    car.position.z = -spawnPosition;
+
+    // Random speed between 80-130 km/h (22-36 m/s)
+    const speed = 22 + Math.random() * 14;
+
+    this.scene.add(car);
+    this.oncomingCars.push(car);
+    this.oncomingCarPositions.push(spawnPosition);
+    this.oncomingCarSpeeds.push(speed);
+  }
+
+  private updateOncomingTraffic(deltaTime: number): void {
+    if (this.isGameOver || this.isCrashing) return;
+
+    const playerPos = this.playerVehicle.position;
+
+    // Spawn new cars occasionally
+    if (Math.random() < 0.02) { // ~2% chance per frame
+      this.spawnOncomingCar();
+    }
+
+    // Update existing cars
+    for (let i = this.oncomingCars.length - 1; i >= 0; i--) {
+      // Oncoming cars move TOWARD player (decreasing world position)
+      this.oncomingCarPositions[i] -= this.oncomingCarSpeeds[i] * deltaTime;
+
+      // Update 3D position
+      this.oncomingCars[i].position.z = -this.oncomingCarPositions[i];
+
+      // Add slight random weave for realism
+      this.oncomingCars[i].position.x = this.ONCOMING_LANE_X + Math.sin(Date.now() * 0.001 + i) * 0.2;
+
+      // Remove if passed player
+      if (this.oncomingCarPositions[i] < playerPos - this.ONCOMING_DESPAWN_BEHIND) {
+        this.scene.remove(this.oncomingCars[i]);
+        this.oncomingCars.splice(i, 1);
+        this.oncomingCarPositions.splice(i, 1);
+        this.oncomingCarSpeeds.splice(i, 1);
+      }
     }
   }
 
@@ -662,24 +859,27 @@ class SafeDistanceSimulator {
     roadMesh.receiveShadow = true;
     roadGroup.add(roadMesh);
 
-    // Road markings (dashed center line) - store separately for animation
+    // Road markings - solid yellow center line (double line for two-lane road)
     this.roadMarkings = new THREE.Group();
-    const dashLength = 3;
-    const dashGap = 2;
-    const dashCount = Math.floor(roadLength / (dashLength + dashGap));
 
-    for (let i = 0; i < dashCount; i++) {
-      const dashGeometry = new THREE.PlaneGeometry(0.2, dashLength);
-      const dashMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-      const dash = new THREE.Mesh(dashGeometry, dashMaterial);
-      dash.rotation.x = -Math.PI / 2;
-      dash.position.set(0, 0.01, -roadLength / 2 + i * (dashLength + dashGap));
-      this.roadMarkings.add(dash);
-    }
+    // Solid yellow center lines (double line - no passing zone)
+    const centerLineGeometry = new THREE.PlaneGeometry(0.15, roadLength);
+    const centerLineMaterial = new THREE.MeshBasicMaterial({ color: 0xffcc00 }); // Yellow
+
+    const leftCenterLine = new THREE.Mesh(centerLineGeometry, centerLineMaterial);
+    leftCenterLine.rotation.x = -Math.PI / 2;
+    leftCenterLine.position.set(-0.15, 0.01, 0);
+    this.roadMarkings.add(leftCenterLine);
+
+    const rightCenterLine = new THREE.Mesh(centerLineGeometry, centerLineMaterial);
+    rightCenterLine.rotation.x = -Math.PI / 2;
+    rightCenterLine.position.set(0.15, 0.01, 0);
+    this.roadMarkings.add(rightCenterLine);
+
     roadGroup.add(this.roadMarkings);
 
-    // Store dash pattern info for animation
-    (this.roadMarkings as any).dashPattern = dashLength + dashGap;
+    // No dash pattern needed for solid lines (but keep for compatibility)
+    (this.roadMarkings as any).dashPattern = 5;
 
     // Side lines
     const sideLineGeometry = new THREE.PlaneGeometry(0.3, roadLength);
@@ -1570,8 +1770,9 @@ class SafeDistanceSimulator {
     this.updateCamera();
     this.updateRoad();
 
-    // Update rear car and mirrors
+    // Update rear car, oncoming traffic, and mirrors
     this.updateRearCar(clampedDelta);
+    this.updateOncomingTraffic(clampedDelta);
     this.updateMirrors();
 
     // Check for collision

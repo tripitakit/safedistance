@@ -10,6 +10,87 @@ body {
   background: #000;
 }
 
+/* Loading Screen */
+.loading-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(135deg, #000 0%, #001a00 50%, #000 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  transition: opacity 0.5s ease-out;
+}
+
+.loading-screen.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-content {
+  text-align: center;
+}
+
+.loading-content h1 {
+  color: #0f0;
+  font-size: 64px;
+  font-weight: bold;
+  text-shadow: 0 0 30px rgba(0, 255, 0, 0.8), 0 0 60px rgba(0, 255, 0, 0.4);
+  margin-bottom: 40px;
+  letter-spacing: 8px;
+  animation: loadingPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes loadingPulse {
+  0%, 100% { opacity: 1; text-shadow: 0 0 30px rgba(0, 255, 0, 0.8), 0 0 60px rgba(0, 255, 0, 0.4); }
+  50% { opacity: 0.7; text-shadow: 0 0 20px rgba(0, 255, 0, 0.6), 0 0 40px rgba(0, 255, 0, 0.3); }
+}
+
+.loading-bar {
+  width: 300px;
+  height: 8px;
+  background: rgba(0, 255, 0, 0.2);
+  border: 2px solid #0f0;
+  border-radius: 4px;
+  margin: 0 auto 20px;
+  overflow: hidden;
+}
+
+.loading-progress {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #0f0, #0ff, #0f0);
+  background-size: 200% 100%;
+  animation: loadingBar 1.5s ease-in-out infinite, loadingShine 1s linear infinite;
+  border-radius: 2px;
+}
+
+@keyframes loadingBar {
+  0% { width: 0%; }
+  50% { width: 70%; }
+  100% { width: 100%; }
+}
+
+@keyframes loadingShine {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.loading-text {
+  color: #0f0;
+  font-size: 18px;
+  letter-spacing: 4px;
+  animation: loadingTextBlink 0.8s ease-in-out infinite;
+}
+
+@keyframes loadingTextBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 #app {
   width: 100vw;
   height: 100vh;
