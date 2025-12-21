@@ -18,19 +18,14 @@ class SafeDistanceSimulator {
   private environment!: THREE.Group;
   private environment2!: THREE.Group;
 
+  // Track bridge kilometer text sprites for dynamic updates
+  private bridgeTexts: THREE.Sprite[] = [];
+
   private lastTime: number = 0;
 
   // HUD elements
-  private speedElement: HTMLElement;
-  private leadSpeedElement: HTMLElement;
-  private distanceElement: HTMLElement;
-  private safeDistanceElement: HTMLElement;
-  private brakeElement: HTMLElement;
-  private accelElement: HTMLElement;
   private warningTooCloseElement: HTMLElement;
   private warningSafeElement: HTMLElement;
-  private kmCounterElement: HTMLElement;
-  private scoreElement: HTMLElement;
   private scoreOverlayElement: HTMLElement;
   private gameStartOverlayElement!: HTMLElement;
   private speedometerCanvas: HTMLCanvasElement;
@@ -93,16 +88,8 @@ class SafeDistanceSimulator {
     });
 
     // Get HUD elements
-    this.speedElement = document.getElementById('speed')!;
-    this.leadSpeedElement = document.getElementById('leadSpeed')!;
-    this.distanceElement = document.getElementById('distance')!;
-    this.safeDistanceElement = document.getElementById('safeDistance')!;
-    this.brakeElement = document.getElementById('brake')!;
-    this.accelElement = document.getElementById('accel')!;
     this.warningTooCloseElement = document.getElementById('warningTooClose')!;
     this.warningSafeElement = document.getElementById('warningSafe')!;
-    this.kmCounterElement = document.getElementById('kmCounter')!;
-    this.scoreElement = document.getElementById('score')!;
     this.scoreOverlayElement = document.getElementById('scoreOverlay')!;
     this.gameStartOverlayElement = document.getElementById('gameStartOverlay')!;
     this.speedometerCanvas = document.getElementById('speedometer') as HTMLCanvasElement;
@@ -228,9 +215,10 @@ class SafeDistanceSimulator {
   private createRoad(): THREE.Group {
     const roadGroup = new THREE.Group();
 
-    // Road surface - much longer for infinite effect
+    // Road surface - extended for seamless infinite scrolling
+    // 2600m covers 2000m chunk travel + 300m fog distance on each end
     const roadWidth = 10;
-    const roadLength = 2000; // Increased from 500 to 2000
+    const roadLength = 2600;
     const roadGeometry = new THREE.PlaneGeometry(roadWidth, roadLength);
     const roadMaterial = new THREE.MeshStandardMaterial({
       color: 0x333333,
@@ -422,10 +410,180 @@ class SafeDistanceSimulator {
     return bush;
   }
 
+  private createKilometerText(kmNumber: number): THREE.Sprite {
+    // Create canvas for text
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d')!;
+    canvas.width = 256;
+    canvas.height = 128;
+
+    // Store canvas and context on sprite for updates
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.scale.set(4, 2, 1);
+
+    // Store canvas and context for later updates
+    (sprite as any).canvas = canvas;
+    (sprite as any).context = context;
+    (sprite as any).texture = texture;
+
+    // Initial draw
+    this.updateKilometerText(sprite, kmNumber);
+
+    return sprite;
+  }
+
+  private updateKilometerText(sprite: THREE.Sprite, kmNumber: number): void {
+    const canvas = (sprite as any).canvas;
+    const context = (sprite as any).context;
+    const texture = (sprite as any).texture;
+
+    // Clear and redraw
+    context.fillStyle = '#000000';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.font = 'bold 60px Arial';
+    context.fillStyle = '#ffff00';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(`${kmNumber} KM`, canvas.width / 2, canvas.height / 2);
+
+    // Mark texture as needing update
+    texture.needsUpdate = true;
+  }
+
+  private createKilometerBridge(kmNumber: number): THREE.Group {
+    const bridge = new THREE.Group();
+
+    // Iron tube material (dark metallic gray)
+    const tubeMaterial = new THREE.MeshStandardMaterial({
+      color: 0x555555,
+      metalness: 0.8,
+      roughness: 0.3
+    });
+
+    const tubeRadius = 0.12;
+    const tubeSegments = 16;
+
+    // Bridge dimensions
+    const bridgeWidth = 14; // Spans over road (10m) + extra
+    const bridgeHeight = 6; // Height above ground
+    const bridgeDepth = 3; // Depth in Z direction
+
+    // Vertical support posts (left and right)
+    const postHeight = bridgeHeight;
+    const postGeometry = new THREE.CylinderGeometry(tubeRadius, tubeRadius, postHeight, tubeSegments);
+
+    // Left posts
+    const leftFrontPost = new THREE.Mesh(postGeometry, tubeMaterial);
+    leftFrontPost.position.set(-bridgeWidth / 2, postHeight / 2, -bridgeDepth / 2);
+    leftFrontPost.castShadow = true;
+    bridge.add(leftFrontPost);
+
+    const leftBackPost = new THREE.Mesh(postGeometry, tubeMaterial);
+    leftBackPost.position.set(-bridgeWidth / 2, postHeight / 2, bridgeDepth / 2);
+    leftBackPost.castShadow = true;
+    bridge.add(leftBackPost);
+
+    // Right posts
+    const rightFrontPost = new THREE.Mesh(postGeometry, tubeMaterial);
+    rightFrontPost.position.set(bridgeWidth / 2, postHeight / 2, -bridgeDepth / 2);
+    rightFrontPost.castShadow = true;
+    bridge.add(rightFrontPost);
+
+    const rightBackPost = new THREE.Mesh(postGeometry, tubeMaterial);
+    rightBackPost.position.set(bridgeWidth / 2, postHeight / 2, bridgeDepth / 2);
+    rightBackPost.castShadow = true;
+    bridge.add(rightBackPost);
+
+    // Horizontal top beams
+    const topBeamGeometry = new THREE.CylinderGeometry(tubeRadius, tubeRadius, bridgeWidth, tubeSegments);
+
+    // Front top beam
+    const frontTopBeam = new THREE.Mesh(topBeamGeometry, tubeMaterial);
+    frontTopBeam.rotation.z = Math.PI / 2;
+    frontTopBeam.position.set(0, bridgeHeight, -bridgeDepth / 2);
+    frontTopBeam.castShadow = true;
+    bridge.add(frontTopBeam);
+
+    // Back top beam
+    const backTopBeam = new THREE.Mesh(topBeamGeometry, tubeMaterial);
+    backTopBeam.rotation.z = Math.PI / 2;
+    backTopBeam.position.set(0, bridgeHeight, bridgeDepth / 2);
+    backTopBeam.castShadow = true;
+    bridge.add(backTopBeam);
+
+    // Side beams connecting front and back
+    const sideBeamGeometry = new THREE.CylinderGeometry(tubeRadius, tubeRadius, bridgeDepth, tubeSegments);
+
+    // Left side beam
+    const leftSideBeam = new THREE.Mesh(sideBeamGeometry, tubeMaterial);
+    leftSideBeam.rotation.x = Math.PI / 2;
+    leftSideBeam.position.set(-bridgeWidth / 2, bridgeHeight, 0);
+    leftSideBeam.castShadow = true;
+    bridge.add(leftSideBeam);
+
+    // Right side beam
+    const rightSideBeam = new THREE.Mesh(sideBeamGeometry, tubeMaterial);
+    rightSideBeam.rotation.x = Math.PI / 2;
+    rightSideBeam.position.set(bridgeWidth / 2, bridgeHeight, 0);
+    rightSideBeam.castShadow = true;
+    bridge.add(rightSideBeam);
+
+    // Cross bracing for structural look
+    const crossBeamLength = Math.sqrt(bridgeWidth * bridgeWidth + bridgeDepth * bridgeDepth);
+    const crossBeamGeometry = new THREE.CylinderGeometry(tubeRadius * 0.8, tubeRadius * 0.8, crossBeamLength, tubeSegments);
+
+    // Diagonal cross beam 1
+    const crossBeam1 = new THREE.Mesh(crossBeamGeometry, tubeMaterial);
+    const angleXZ = Math.atan2(bridgeDepth, bridgeWidth);
+    crossBeam1.rotation.z = Math.PI / 2;
+    crossBeam1.rotation.y = angleXZ;
+    crossBeam1.position.set(0, bridgeHeight, 0);
+    crossBeam1.castShadow = true;
+    bridge.add(crossBeam1);
+
+    // Diagonal cross beam 2
+    const crossBeam2 = new THREE.Mesh(crossBeamGeometry, tubeMaterial);
+    crossBeam2.rotation.z = Math.PI / 2;
+    crossBeam2.rotation.y = -angleXZ;
+    crossBeam2.position.set(0, bridgeHeight, 0);
+    crossBeam2.castShadow = true;
+    bridge.add(crossBeam2);
+
+    // Add kilometer text on top
+    const kmText = this.createKilometerText(kmNumber);
+    kmText.position.set(0, bridgeHeight + 0.5, 0);
+    bridge.add(kmText);
+
+    // Store reference to text sprite on bridge for updates
+    (bridge as any).kmText = kmText;
+
+    return bridge;
+  }
+
   private createEnvironment(): THREE.Group {
     const envGroup = new THREE.Group();
     const roadLength = 2000;
     const spacing = 30; // Distance between objects
+
+    // Place kilometer bridges every 1000m within each 2000m environment chunk
+    // Environment spans local z from -1000 to +1000 (centered at origin)
+    // Bridges at local z = -1000 and z = 0 correspond to every 1000m on the road
+    const bridges: THREE.Group[] = [];
+    const bridgeLocalPositions = [-1000, 0]; // Every 1000m within the chunk
+    for (const localZ of bridgeLocalPositions) {
+      const bridge = this.createKilometerBridge(1); // Initial km, will be updated dynamically
+      bridge.position.z = localZ;
+      envGroup.add(bridge);
+      bridges.push(bridge);
+
+      // Track all bridge text sprites
+      this.bridgeTexts.push((bridge as any).kmText);
+    }
+
+    // Store bridges on the environment group for later updates
+    (envGroup as any).bridges = bridges;
 
     // Place objects along the road
     for (let z = -roadLength / 2; z < roadLength / 2; z += spacing) {
@@ -514,56 +672,76 @@ class SafeDistanceSimulator {
   }
 
   private updateRoad(): void {
-    // Infinite road: road moves with player to create endless highway effect
-    // The road segment is 2000m long and repeats seamlessly
+    // Infinite road using chunk-based positioning
+    // Road and environment stay at fixed world positions, only "teleport" when behind camera
     const roadLength = 2000;
-
-    // Keep road centered under the player with seamless tiling
-    // When player moves forward, road scrolls backward to match
     const playerPos = this.playerVehicle.position;
-    const roadRepeat = Math.floor(playerPos / roadLength);
-    const roadOffset = playerPos - (roadRepeat * roadLength);
 
-    // Position road to always be under and ahead of player
-    this.road.position.z = -roadOffset;
+    // Which 2000m chunk is the camera currently in?
+    const chunk = Math.floor(playerPos / roadLength);
+
+    // Road: position to always cover camera's visible range
+    // Road is 2600m long, position at center of 2000m chunk for full coverage
+    this.road.position.z = -chunk * roadLength - roadLength / 2;
 
     // Animate road markings (dashed center line) to show velocity
+    // Markings move in POSITIVE Z (toward camera) to create scrolling illusion
     const dashPattern = (this.roadMarkings as any).dashPattern || 5;
-    // Offset the markings based on player position for seamless scrolling
-    // Positive Z moves markings toward camera (correct direction for driving forward)
     const markingOffset = playerPos % dashPattern;
     this.roadMarkings.position.z = markingOffset;
 
-    // Animate environment objects (trees, houses, bushes) with infinite scrolling
-    // Use two copies positioned 2000m apart for seamless looping
-    const envOffset = playerPos % roadLength;
+    // Environment: two chunks positioned at fixed world coordinates
+    // One chunk covers current camera area, one covers ahead
+    // When camera moves to next chunk, they swap roles (invisible teleport behind camera)
+    this.environment.position.z = -chunk * roadLength;
+    this.environment2.position.z = -(chunk + 1) * roadLength;
 
-    // First environment copy scrolls forward (toward camera)
-    this.environment.position.z = envOffset;
+    // Update kilometer bridge texts based on player position
+    this.updateBridgeKilometers();
+  }
 
-    // Second environment copy is positioned 2000m behind the first
-    // When first copy passes through, second copy takes its place
-    this.environment2.position.z = envOffset - roadLength;
+  private updateBridgeKilometers(): void {
+    // Get bridges from both environment copies
+    const bridges1 = (this.environment as any).bridges || [];
+    const bridges2 = (this.environment2 as any).bridges || [];
+
+    // Update first environment's bridges
+    bridges1.forEach((bridge: THREE.Group) => {
+      // Calculate actual world position of this bridge
+      const bridgeWorldZ = bridge.position.z + this.environment.position.z;
+      // Convert world position to km (negative Z = forward = positive km)
+      const kmToShow = Math.round(-bridgeWorldZ / 1000);
+
+      // Show and update bridges with valid km values, hide invalid ones
+      if (kmToShow > 0) {
+        bridge.visible = true;
+        this.updateKilometerText((bridge as any).kmText, kmToShow);
+      } else {
+        bridge.visible = false;
+      }
+    });
+
+    // Update second environment's bridges
+    bridges2.forEach((bridge: THREE.Group) => {
+      // Calculate actual world position of this bridge
+      const bridgeWorldZ = bridge.position.z + this.environment2.position.z;
+      // Convert world position to km (negative Z = forward = positive km)
+      const kmToShow = Math.round(-bridgeWorldZ / 1000);
+
+      // Show and update bridges with valid km values, hide invalid ones
+      if (kmToShow > 0) {
+        bridge.visible = true;
+        this.updateKilometerText((bridge as any).kmText, kmToShow);
+      } else {
+        bridge.visible = false;
+      }
+    });
   }
 
   private updateHUD(): void {
     const speed = Math.round(this.playerVehicle.getVelocityKmh());
-    const leadSpeed = Math.round(this.leadVehicle.getVelocityKmh());
     const distance = Math.round(this.getDistance());
     const safeDistance = Math.round(this.calculateSafeDistance());
-    const brake = this.inputController.getBrakePercentage();
-    const accel = Math.round(this.inputController.getAccelerationInput() * 100);
-
-    this.speedElement.textContent = speed.toString();
-    this.leadSpeedElement.textContent = leadSpeed.toString();
-    this.distanceElement.textContent = distance.toString();
-    this.safeDistanceElement.textContent = safeDistance.toString();
-    this.brakeElement.textContent = brake.toString();
-    this.accelElement.textContent = accel.toString();
-
-    // Update km counter
-    const kmDriven = this.playerVehicle.position / 1000;
-    this.kmCounterElement.textContent = kmDriven.toFixed(2);
 
     // Update score - only award points when driving below safe distance
     if (distance < safeDistance && distance > 0 && !this.isCrashing) {
@@ -581,7 +759,6 @@ class SafeDistanceSimulator {
       this.score += pointsPerFrame;
     }
     const roundedScore = Math.round(this.score).toString();
-    this.scoreElement.textContent = roundedScore;
     this.scoreOverlayElement.textContent = roundedScore;
 
     // Update timed warnings based on distance state changes

@@ -50,7 +50,7 @@ export class InputController {
    * Get acceleration input (0-1)
    */
   public getAccelerationInput(): number {
-    return this.isKeyPressed('a') ? 1 : 0;
+    return this.isKeyPressed('enter') ? 1 : 0;
   }
 
   /**
@@ -82,9 +82,9 @@ export class InputController {
    * Get debug info about key states
    */
   public getDebugInfo(): string {
-    const aPressed = this.isKeyPressed('a') ? 'YES' : 'NO';
+    const enterPressed = this.isKeyPressed('enter') ? 'YES' : 'NO';
     const spacePressed = this.spaceKeyPressed ? 'YES' : 'NO';
     const holdTime = this.spaceKeyPressed ? Date.now() - this.spaceKeyDownTime : 0;
-    return `A: ${aPressed} | Space: ${spacePressed} (${holdTime}ms)`;
+    return `Enter: ${enterPressed} | Space: ${spacePressed} (${holdTime}ms)`;
   }
 }
