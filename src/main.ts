@@ -61,6 +61,10 @@ class SafeDistanceSimulator {
   private injuriesListElement!: HTMLElement;
   private prognosisElement!: HTMLElement;
 
+  // Lead Vehicle Health Report elements
+  private leadOccupantsElement!: HTMLElement;
+  private leadOccupantsListElement!: HTMLElement;
+
   // High score elements
   private highScoreNameInputElement!: HTMLElement;
   private newHighScoreElement!: HTMLElement;
@@ -141,6 +145,10 @@ class SafeDistanceSimulator {
     this.patientStatusElement = document.getElementById('patientStatus')!;
     this.injuriesListElement = document.getElementById('injuriesList')!;
     this.prognosisElement = document.getElementById('prognosis')!;
+
+    // Get Lead Vehicle Health Report elements
+    this.leadOccupantsElement = document.getElementById('leadOccupants')!;
+    this.leadOccupantsListElement = document.getElementById('leadOccupantsList')!;
 
     // Get High Score elements
     this.highScoreNameInputElement = document.getElementById('highScoreNameInput')!;
@@ -1890,6 +1898,105 @@ class SafeDistanceSimulator {
     } else {
       this.gForceElement.style.color = '#ff0000';
     }
+
+    // Update lead vehicle occupants
+    this.updateLeadVehicleOccupants(gForce);
+  }
+
+  /**
+   * Generate and display lead vehicle occupants health report
+   * Lead vehicle experiences rear-end impact (different injury patterns)
+   */
+  private updateLeadVehicleOccupants(gForce: number): void {
+    // Random number of occupants (1-4)
+    const numOccupants = Math.floor(Math.random() * 4) + 1;
+    const occupantRoles = ['Driver', 'Front Passenger', 'Rear Left Passenger', 'Rear Right Passenger'];
+
+    this.leadOccupantsElement.textContent = `${numOccupants} ${numOccupants === 1 ? 'person' : 'people'}`;
+
+    // Generate occupant cards
+    let occupantsHtml = '';
+
+    for (let i = 0; i < numOccupants; i++) {
+      const role = occupantRoles[i];
+      // Rear passengers typically experience slightly less G-force
+      const isRearSeat = i >= 2;
+      const occupantGForce = isRearSeat ? gForce * 0.85 : gForce;
+
+      const { status, statusClass, injuries } = this.getOccupantInjuries(occupantGForce, isRearSeat);
+
+      occupantsHtml += `
+        <div class="occupant-card ${statusClass}">
+          <div class="occupant-header">
+            <span class="occupant-role">${role}</span>
+            <span class="occupant-status ${statusClass}">${status}</span>
+          </div>
+          <ul class="occupant-injuries">
+            ${injuries.map(inj => `<li>${inj}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    }
+
+    this.leadOccupantsListElement.innerHTML = occupantsHtml;
+  }
+
+  /**
+   * Get injuries for a lead vehicle occupant based on G-force
+   * Rear-end collision injuries: whiplash, head/neck injuries from sudden acceleration
+   */
+  private getOccupantInjuries(gForce: number, isRearSeat: boolean): {
+    status: string;
+    statusClass: string;
+    injuries: string[];
+  } {
+    const injuries: string[] = [];
+    let status: string;
+    let statusClass: string;
+
+    if (gForce < 15) {
+      status = 'STABLE';
+      statusClass = 'stable';
+      injuries.push('Minor neck strain');
+      if (!isRearSeat) injuries.push('Mild headrest impact');
+    } else if (gForce < 35) {
+      status = 'SERIOUS';
+      statusClass = 'serious';
+      injuries.push('Whiplash (cervical hyperextension)');
+      injuries.push('Neck muscle strain');
+      if (!isRearSeat) {
+        injuries.push('Headrest impact contusion');
+      } else {
+        injuries.push('Seat belt bruising');
+      }
+    } else if (gForce < 60) {
+      status = 'CRITICAL';
+      statusClass = 'critical';
+      injuries.push('Severe whiplash injury');
+      injuries.push('Cervical disc herniation');
+      injuries.push('Concussion from headrest');
+      if (!isRearSeat) {
+        injuries.push('Facial lacerations');
+      }
+      injuries.push('Thoracic spine strain');
+    } else if (gForce < 90) {
+      status = 'CRITICAL';
+      statusClass = 'critical';
+      injuries.push('Cervical vertebrae fracture');
+      injuries.push('Severe traumatic brain injury');
+      injuries.push('Spinal cord compression');
+      injuries.push('Internal bleeding');
+      injuries.push('Multiple contusions');
+    } else {
+      status = 'FATAL';
+      statusClass = 'fatal';
+      injuries.push('Cervical spine dissociation');
+      injuries.push('Fatal brain trauma');
+      injuries.push('Internal decapitation risk');
+      injuries.push('Massive internal hemorrhage');
+    }
+
+    return { status, statusClass, injuries };
   }
 
   private restart(): void {

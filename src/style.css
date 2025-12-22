@@ -353,7 +353,7 @@ body {
 
   .crash-report-content {
     display: flex;
-    gap: 25px;
+    gap: 20px;
     align-items: flex-start;
   }
 
@@ -366,6 +366,14 @@ body {
     flex: 1;
     min-width: 0;
     margin-top: 0 !important;
+  }
+
+  .health-report.player-health {
+    flex: 1.1;
+  }
+
+  .health-report.lead-health {
+    flex: 1;
   }
 
   .crash-details h2,
@@ -586,6 +594,76 @@ body {
 .prognosis-value.poor { color: #ff9900; }
 .prognosis-value.critical { color: #ff6600; }
 .prognosis-value.fatal { color: #ff0000; text-shadow: 0 0 10px rgba(255, 0, 0, 0.8); }
+
+/* Lead Vehicle Health Report */
+.lead-health {
+  background: linear-gradient(135deg, rgba(80, 60, 0, 0.3) 0%, rgba(60, 40, 0, 0.5) 100%);
+  border-color: #ffaa00;
+  box-shadow: 0 0 20px rgba(255, 170, 0, 0.2);
+}
+
+.lead-health h2 {
+  color: #ffaa00;
+  text-shadow: 0 0 10px rgba(255, 170, 0, 0.5);
+  border-bottom-color: rgba(255, 170, 0, 0.3);
+}
+
+.occupant-count {
+  color: #ffaa00;
+}
+
+.occupants-list {
+  margin-top: 10px;
+}
+
+.occupant-card {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-left: 3px solid #666;
+}
+
+.occupant-card.stable { border-left-color: #00ff00; }
+.occupant-card.serious { border-left-color: #ffff00; }
+.occupant-card.critical { border-left-color: #ff6600; }
+.occupant-card.fatal { border-left-color: #ff0000; }
+
+.occupant-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.occupant-role {
+  color: #ffcc00;
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.occupant-status {
+  font-size: 12px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.occupant-status.stable { background: #004400; color: #00ff00; }
+.occupant-status.serious { background: #444400; color: #ffff00; }
+.occupant-status.critical { background: #442200; color: #ff6600; }
+.occupant-status.fatal { background: #440000; color: #ff0000; }
+
+.occupant-injuries {
+  font-size: 11px;
+  color: #cccccc;
+  margin: 0;
+  padding-left: 12px;
+}
+
+.occupant-injuries li {
+  padding: 1px 0;
+}
 
 /* Mobile: Compact vertical layout */
 @media (max-width: 767px) {
