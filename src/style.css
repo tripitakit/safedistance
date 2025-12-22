@@ -152,6 +152,7 @@ body {
   top: 100px;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 10000;
   color: #fff;
   padding: 20px 40px;
   font-size: 36px;
@@ -332,8 +333,8 @@ body {
   border: 4px solid #ff0000;
   border-radius: 15px;
   padding: 30px;
-  max-width: 1000px;
-  width: 95%;
+  max-width: 1400px;
+  width: 98%;
   box-shadow: 0 0 50px rgba(255, 0, 0, 0.5);
   animation: crashAppear 0.5s ease-out;
   max-height: 95vh;
@@ -353,18 +354,19 @@ body {
 
   .crash-report-content {
     display: flex;
-    gap: 20px;
+    gap: 25px;
     align-items: flex-start;
+    flex-wrap: wrap;
   }
 
   .crash-details {
-    flex: 1;
-    min-width: 0;
+    flex: 1 1 280px;
+    min-width: 250px;
   }
 
   .health-report {
-    flex: 1;
-    min-width: 0;
+    flex: 1 1 280px;
+    min-width: 250px;
     margin-top: 0 !important;
   }
 
@@ -373,6 +375,10 @@ body {
   }
 
   .health-report.lead-health {
+    flex: 1;
+  }
+
+  .health-report.rear-health {
     flex: 1;
   }
 
@@ -606,6 +612,40 @@ body {
   color: #ffaa00;
   text-shadow: 0 0 10px rgba(255, 170, 0, 0.5);
   border-bottom-color: rgba(255, 170, 0, 0.3);
+}
+
+/* Rear Vehicle Health Report */
+.rear-health {
+  background: linear-gradient(135deg, rgba(80, 0, 0, 0.3) 0%, rgba(60, 0, 0, 0.5) 100%);
+  border-color: #ff6600;
+  box-shadow: 0 0 20px rgba(255, 102, 0, 0.2);
+}
+
+.rear-health h2 {
+  color: #ff6600;
+  text-shadow: 0 0 10px rgba(255, 102, 0, 0.5);
+  border-bottom-color: rgba(255, 102, 0, 0.3);
+}
+
+/* No damage notice for uninvolved vehicles */
+.no-damage-notice {
+  text-align: center;
+  padding: 20px;
+  color: #00cc00;
+  font-size: 16px;
+  background: rgba(0, 100, 0, 0.2);
+  border-radius: 8px;
+  margin-top: 10px;
+}
+
+.no-damage-notice .check-icon {
+  font-size: 32px;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.no-damage-notice .notice-text {
+  opacity: 0.9;
 }
 
 .occupant-count {

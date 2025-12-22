@@ -62,8 +62,14 @@ class SafeDistanceSimulator {
   private prognosisElement!: HTMLElement;
 
   // Lead Vehicle Health Report elements
+  private leadHealthSectionElement!: HTMLElement;
   private leadOccupantsElement!: HTMLElement;
   private leadOccupantsListElement!: HTMLElement;
+
+  // Rear Vehicle Health Report elements
+  private rearHealthSectionElement!: HTMLElement;
+  private rearOccupantsElement!: HTMLElement;
+  private rearOccupantsListElement!: HTMLElement;
 
   // High score elements
   private highScoreNameInputElement!: HTMLElement;
@@ -88,7 +94,11 @@ class SafeDistanceSimulator {
   // Rear car and mirror system
   private rearCar!: THREE.Group;
   private rearCamera!: THREE.PerspectiveCamera;
+  private leftMirrorCamera!: THREE.PerspectiveCamera;
+  private rightMirrorCamera!: THREE.PerspectiveCamera;
   private mirrorRenderTarget!: THREE.WebGLRenderTarget;
+  private leftMirrorRenderTarget!: THREE.WebGLRenderTarget;
+  private rightMirrorRenderTarget!: THREE.WebGLRenderTarget;
   private rearCarDistance: number = 12; // Base distance behind player
   private rearCarTargetDistance: number = 7; // Following distance (4-10m range) - aggressive
   private rearCarVelocity: number = 0; // m/s - rear car has its own velocity
@@ -147,8 +157,14 @@ class SafeDistanceSimulator {
     this.prognosisElement = document.getElementById('prognosis')!;
 
     // Get Lead Vehicle Health Report elements
+    this.leadHealthSectionElement = document.getElementById('leadHealthSection')!;
     this.leadOccupantsElement = document.getElementById('leadOccupants')!;
     this.leadOccupantsListElement = document.getElementById('leadOccupantsList')!;
+
+    // Get Rear Vehicle Health Report elements
+    this.rearHealthSectionElement = document.getElementById('rearHealthSection')!;
+    this.rearOccupantsElement = document.getElementById('rearOccupants')!;
+    this.rearOccupantsListElement = document.getElementById('rearOccupantsList')!;
 
     // Get High Score elements
     this.highScoreNameInputElement = document.getElementById('highScoreNameInput')!;
@@ -521,23 +537,51 @@ class SafeDistanceSimulator {
   }
 
   private setupMirrors(): void {
-    // Create high-resolution render target for mirror reflections
+    // Create render target for center rearview mirror (full rear view)
     this.mirrorRenderTarget = new THREE.WebGLRenderTarget(512, 256, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat
     });
 
-    // Create rear-facing camera for mirror view - narrow FOV for flat/telephoto look
+    // Create render targets for side mirrors (partial side views)
+    this.leftMirrorRenderTarget = new THREE.WebGLRenderTarget(256, 128, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat
+    });
+
+    this.rightMirrorRenderTarget = new THREE.WebGLRenderTarget(256, 128, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat
+    });
+
+    // Create rear-facing camera for center mirror - narrow FOV for flat/telephoto look
     this.rearCamera = new THREE.PerspectiveCamera(25, 2, 0.1, 200);
 
-    // Find and update mirror surfaces with render texture
+    // Create side mirror cameras - wider FOV, angled to show sides
+    this.leftMirrorCamera = new THREE.PerspectiveCamera(40, 2, 0.1, 150);
+    this.rightMirrorCamera = new THREE.PerspectiveCamera(40, 2, 0.1, 150);
+
+    // Find and update mirror surfaces with appropriate render textures
     this.playerVehicle.mesh.children.forEach(child => {
       if (child instanceof THREE.Mesh && child.userData.isMirror) {
-        // Replace material with one that uses the render target
+        const mirrorType = child.userData.mirrorType;
+        let texture;
+
+        if (mirrorType === 'left') {
+          texture = this.leftMirrorRenderTarget.texture;
+        } else if (mirrorType === 'right') {
+          texture = this.rightMirrorRenderTarget.texture;
+        } else {
+          texture = this.mirrorRenderTarget.texture;
+        }
+
+        // Replace material with one that uses the appropriate render target
         // DoubleSide ensures visibility from driver's perspective
         child.material = new THREE.MeshBasicMaterial({
-          map: this.mirrorRenderTarget.texture,
+          map: texture,
           side: THREE.DoubleSide
         });
       }
@@ -557,10 +601,10 @@ class SafeDistanceSimulator {
       this.rearCarVelocity = playerSpeedMs;
     }
 
-    // Aggressive tailgating - follows at 4-10m (closer than before)
+    // Aggressive tailgating - follows at 5-12m (close but not overlapping)
     if (Math.random() < 0.02) {
-      const minDistance = Math.max(4, 6 - playerSpeed / 40); // Minimum 4m at high speed
-      const maxDistance = Math.max(10, 14 - playerSpeed / 25);
+      const minDistance = Math.max(5, 7 - playerSpeed / 50); // Minimum 5m
+      const maxDistance = Math.max(12, 16 - playerSpeed / 30);
       this.rearCarTargetDistance = minDistance + Math.random() * (maxDistance - minDistance);
     }
 
@@ -574,12 +618,15 @@ class SafeDistanceSimulator {
     // Aggressive driver - fast acceleration, but smarter braking at short distances
     let targetAcceleration = 0;
 
-    // Emergency braking when very close and still approaching
-    if (currentDistance < 4 && closingSpeed > 0) {
+    // Emergency braking when getting too close
+    if (currentDistance < 5 && closingSpeed > 0) {
       // Hard brake proportional to danger (close + fast approach = more braking)
-      const urgency = (4 - currentDistance) / 4; // 0-1, higher when closer
+      const urgency = (5 - currentDistance) / 5; // 0-1, higher when closer
       const speedFactor = Math.min(closingSpeed / 5, 1); // 0-1, higher when approaching faster
-      targetAcceleration = -8 * (urgency + speedFactor); // Up to -16 m/s² emergency brake
+      targetAcceleration = -10 * (urgency + speedFactor); // Up to -20 m/s² emergency brake
+    } else if (currentDistance < 4) {
+      // Very close - always brake hard even if not approaching fast
+      targetAcceleration = -12;
     } else if (distanceError > 2) {
       // Too far behind - accelerate aggressively to catch up
       targetAcceleration = Math.min(7, distanceError * 1.5); // m/s² - faster catch up
@@ -619,7 +666,9 @@ class SafeDistanceSimulator {
 
     // Position rear car in 3D scene (right lane with slight weaving)
     const playerZ = this.playerVehicle.mesh.position.z;
-    this.rearCar.position.z = playerZ + this.rearCarDistance;
+    // Clamp visual distance to minimum 3.5m to prevent car models from overlapping
+    const visualDistance = Math.max(3.5, this.rearCarDistance);
+    this.rearCar.position.z = playerZ + visualDistance;
     this.rearCar.position.x = 2.5 + (Math.sin(Date.now() * 0.0015) * 0.3); // Right lane with slight weaving
   }
 
@@ -660,7 +709,8 @@ class SafeDistanceSimulator {
       this.audioEngine.playCrashSound(totalImpactForceKN, totalSpeedDiff);
       this.audioEngine.stopEngine();
 
-      this.showCrashReport(totalImpactForceKN, totalSpeedDiff, playerSpeedKmh, leadSpeedKmh);
+      // Sandwich crash - show all 3 health reports
+      this.showCrashReport(totalImpactForceKN, totalSpeedDiff, playerSpeedKmh, leadSpeedKmh, 'sandwich', rearSpeedDiff, frontSpeedDiff);
     } else {
       // Just rear-ended, not close enough to lead car
       const speedDiffKmh = Math.abs(rearCarSpeedKmh - playerSpeedKmh);
@@ -670,13 +720,14 @@ class SafeDistanceSimulator {
       const impactForceKN = (mass * deltaV) / collisionDuration / 1000;
 
       if (titleEl) titleEl.textContent = '💥 REAR-ENDED - GAME OVER';
-      this.crashLeadSpeedElement.textContent = `${rearCarSpeedKmh.toFixed(1)} km/h (REAR)`;
+      this.crashLeadSpeedElement.textContent = `${rearCarSpeedKmh.toFixed(1)} km/h (REAR CAR)`;
 
       // Play crash sound and stop engine
       this.audioEngine.playCrashSound(impactForceKN, speedDiffKmh);
       this.audioEngine.stopEngine();
 
-      this.showCrashReport(impactForceKN, speedDiffKmh, playerSpeedKmh, rearCarSpeedKmh);
+      // Rear-end only - show rear car health report, not lead
+      this.showCrashReport(impactForceKN, speedDiffKmh, playerSpeedKmh, rearCarSpeedKmh, 'rear', speedDiffKmh, 0);
     }
   }
 
@@ -844,8 +895,13 @@ class SafeDistanceSimulator {
   private updateMirrors(): void {
     if (!this.rearCamera || !this.mirrorRenderTarget) return;
 
-    // Position rear camera - flat telephoto view for minimal perspective distortion
     const playerPos = this.playerVehicle.mesh.position;
+
+    // Hide player vehicle during mirror render
+    this.playerVehicle.mesh.visible = false;
+
+    // === CENTER REARVIEW MIRROR ===
+    // Position rear camera - flat telephoto view for minimal perspective distortion
     this.rearCamera.position.set(
       playerPos.x,
       playerPos.y + 1.2,
@@ -859,12 +915,49 @@ class SafeDistanceSimulator {
       playerPos.z + 100
     );
 
-    // Hide player vehicle during mirror render
-    this.playerVehicle.mesh.visible = false;
-
-    // Render to mirror texture
+    // Render center mirror
     this.renderer.setRenderTarget(this.mirrorRenderTarget);
     this.renderer.render(this.scene, this.rearCamera);
+
+    // === LEFT SIDE MIRROR ===
+    // Position at left side of car, looking backward with slight left offset
+    this.leftMirrorCamera.position.set(
+      playerPos.x - 0.9, // Left side of car
+      playerPos.y + 1.1,
+      playerPos.z - 0.5
+    );
+
+    // Look backward (positive Z) with slight outward angle to the left
+    this.leftMirrorCamera.lookAt(
+      playerPos.x - 3, // Offset left to show left side of road behind
+      playerPos.y + 0.9,
+      playerPos.z + 100 // Look BEHIND (positive Z = behind the car)
+    );
+
+    // Render left mirror
+    this.renderer.setRenderTarget(this.leftMirrorRenderTarget);
+    this.renderer.render(this.scene, this.leftMirrorCamera);
+
+    // === RIGHT SIDE MIRROR ===
+    // Position at right side of car, looking backward with slight right offset
+    this.rightMirrorCamera.position.set(
+      playerPos.x + 0.9, // Right side of car
+      playerPos.y + 1.1,
+      playerPos.z - 0.5
+    );
+
+    // Look backward (positive Z) with slight outward angle to the right
+    this.rightMirrorCamera.lookAt(
+      playerPos.x + 3, // Offset right to show right side of road behind
+      playerPos.y + 0.9,
+      playerPos.z + 100 // Look BEHIND (positive Z = behind the car)
+    );
+
+    // Render right mirror
+    this.renderer.setRenderTarget(this.rightMirrorRenderTarget);
+    this.renderer.render(this.scene, this.rightMirrorCamera);
+
+    // Reset render target
     this.renderer.setRenderTarget(null);
 
     // Show player vehicle again
@@ -1718,18 +1811,29 @@ class SafeDistanceSimulator {
         this.audioEngine.playCrashSound(impactForceKN, speedDiffKmh);
         this.audioEngine.stopEngine();
 
-        // Show crash report with flash animation
+        // Show crash report with flash animation - front collision with lead car
         this.showCrashReport(
           impactForce / 1000, // Convert to kN
           relativeVelocity * 3.6, // Convert to km/h
           v1 * 3.6, // Your speed in km/h
-          v2 * 3.6  // Lead speed in km/h
+          v2 * 3.6, // Lead speed in km/h
+          'front',
+          0, // No rear impact
+          relativeVelocity * 3.6 // Front impact speed diff
         );
       }
     }
   }
 
-  private showCrashReport(impactForceKN: number, speedDiffKmh: number, yourSpeedKmh: number, leadSpeedKmh: number): void {
+  private showCrashReport(
+    impactForceKN: number,
+    speedDiffKmh: number,
+    yourSpeedKmh: number,
+    otherSpeedKmh: number,
+    crashType: 'front' | 'rear' | 'sandwich' = 'front',
+    rearSpeedDiffKmh: number = 0,
+    frontSpeedDiffKmh: number = 0
+  ): void {
     // Show crash flash overlay immediately
     this.crashFlashElement.classList.remove('hidden');
 
@@ -1751,14 +1855,16 @@ class SafeDistanceSimulator {
       damageColor = '#ffaa00'; // Orange for MODERATE
     }
 
-    // Apply visual damage to the lead vehicle
-    this.leadVehicle.applyDamage(damageLevel);
+    // Apply visual damage to the lead vehicle (only in front or sandwich crashes)
+    if (crashType === 'front' || crashType === 'sandwich') {
+      this.leadVehicle.applyDamage(damageLevel);
+    }
 
     // Update crash report UI
     this.impactForceElement.textContent = `${impactForceKN.toFixed(1)} kN`;
     this.speedDiffElement.textContent = `${speedDiffKmh.toFixed(1)} km/h`;
     this.crashYourSpeedElement.textContent = `${yourSpeedKmh.toFixed(1)} km/h`;
-    this.crashLeadSpeedElement.textContent = `${leadSpeedKmh.toFixed(1)} km/h`;
+    this.crashLeadSpeedElement.textContent = `${otherSpeedKmh.toFixed(1)} km/h`;
     this.damageElement.textContent = damageLevel;
     this.damageElement.style.color = damageColor;
 
@@ -1767,8 +1873,8 @@ class SafeDistanceSimulator {
     this.finalKmElement.textContent = `${kmDriven.toFixed(2)} km`;
     this.finalScoreElement.textContent = `${Math.round(this.score)} pts`;
 
-    // Calculate and display Health Report
-    this.updateHealthReport(speedDiffKmh);
+    // Calculate and display Health Report based on crash type
+    this.updateHealthReport(speedDiffKmh, crashType, rearSpeedDiffKmh, frontSpeedDiffKmh);
 
     // Wait 2 seconds for crash animation, then show game over screen
     setTimeout(async () => {
@@ -1790,7 +1896,12 @@ class SafeDistanceSimulator {
    * - 70-100 g: Often fatal (Princess Diana's fatal crash was 70-100 g)
    * Sources: PubMed, IIHS, Physics Factbook
    */
-  private updateHealthReport(speedDiffKmh: number): void {
+  private updateHealthReport(
+    speedDiffKmh: number,
+    crashType: 'front' | 'rear' | 'sandwich' = 'front',
+    rearSpeedDiffKmh: number = 0,
+    frontSpeedDiffKmh: number = 0
+  ): void {
     // Calculate G-force: G = (ΔV / Δt) / 9.81
     const deltaV = speedDiffKmh / 3.6; // Convert to m/s
     const collisionDuration = 0.1; // seconds (typical car crash deceleration)
@@ -1928,8 +2039,49 @@ class SafeDistanceSimulator {
       this.gForceElement.style.color = '#ff0000';
     }
 
-    // Update lead vehicle occupants
-    this.updateLeadVehicleOccupants(gForce);
+    // Show/hide health sections based on crash type and update occupants
+    if (crashType === 'front') {
+      // Front collision - show lead vehicle injuries, rear vehicle not involved
+      this.leadHealthSectionElement.classList.remove('hidden');
+      this.rearHealthSectionElement.classList.remove('hidden');
+      this.updateLeadVehicleOccupants(gForce);
+      this.showNoDamageNotice('rear');
+    } else if (crashType === 'rear') {
+      // Rear-ended - show rear vehicle injuries, lead vehicle not involved
+      this.leadHealthSectionElement.classList.remove('hidden');
+      this.rearHealthSectionElement.classList.remove('hidden');
+      this.showNoDamageNotice('lead');
+      this.updateRearVehicleOccupants(gForce);
+    } else if (crashType === 'sandwich') {
+      // Sandwich crash - show both lead and rear vehicles with injuries
+      this.leadHealthSectionElement.classList.remove('hidden');
+      this.rearHealthSectionElement.classList.remove('hidden');
+      // Calculate separate G-forces for front and rear impacts
+      const frontGForce = (frontSpeedDiffKmh / 3.6) / 0.1 / 9.81;
+      const rearGForce = (rearSpeedDiffKmh / 3.6) / 0.1 / 9.81;
+      this.updateLeadVehicleOccupants(frontGForce);
+      this.updateRearVehicleOccupants(rearGForce);
+    }
+  }
+
+  /**
+   * Show "no damage" notice for a vehicle that wasn't involved in the crash
+   */
+  private showNoDamageNotice(vehicle: 'lead' | 'rear'): void {
+    const noDamageHtml = `
+      <div class="no-damage-notice">
+        <span class="check-icon">✓</span>
+        <span class="notice-text">Not involved in collision - No injuries</span>
+      </div>
+    `;
+
+    if (vehicle === 'lead') {
+      this.leadOccupantsElement.textContent = 'Safe';
+      this.leadOccupantsListElement.innerHTML = noDamageHtml;
+    } else {
+      this.rearOccupantsElement.textContent = 'Safe';
+      this.rearOccupantsListElement.innerHTML = noDamageHtml;
+    }
   }
 
   /**
@@ -1968,6 +2120,115 @@ class SafeDistanceSimulator {
     }
 
     this.leadOccupantsListElement.innerHTML = occupantsHtml;
+  }
+
+  /**
+   * Generate and display rear vehicle occupants health report
+   * Rear vehicle experiences frontal impact (more severe injury patterns)
+   */
+  private updateRearVehicleOccupants(gForce: number): void {
+    // Random number of occupants (1-4)
+    const numOccupants = Math.floor(Math.random() * 4) + 1;
+    const occupantRoles = ['Driver', 'Front Passenger', 'Rear Left Passenger', 'Rear Right Passenger'];
+
+    this.rearOccupantsElement.textContent = `${numOccupants} ${numOccupants === 1 ? 'person' : 'people'}`;
+
+    // Generate occupant cards
+    let occupantsHtml = '';
+
+    for (let i = 0; i < numOccupants; i++) {
+      const role = occupantRoles[i];
+      // Rear passengers typically experience slightly less G-force
+      const isRearSeat = i >= 2;
+      const occupantGForce = isRearSeat ? gForce * 0.85 : gForce;
+
+      // Rear car experiences frontal impact - use frontal injury patterns
+      const { status, statusClass, injuries } = this.getRearCarOccupantInjuries(occupantGForce, isRearSeat);
+
+      occupantsHtml += `
+        <div class="occupant-card ${statusClass}">
+          <div class="occupant-header">
+            <span class="occupant-role">${role}</span>
+            <span class="occupant-status ${statusClass}">${status}</span>
+          </div>
+          <ul class="occupant-injuries">
+            ${injuries.map(inj => `<li>${inj}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    }
+
+    this.rearOccupantsListElement.innerHTML = occupantsHtml;
+  }
+
+  /**
+   * Get injuries for rear car occupant based on G-force
+   * Frontal collision injuries: airbag deployment, steering wheel impact, dashboard contact
+   * More severe than rear-end as driver hits steering wheel/airbag
+   */
+  private getRearCarOccupantInjuries(gForce: number, isRearSeat: boolean): {
+    status: string;
+    statusClass: string;
+    injuries: string[];
+  } {
+    const injuries: string[] = [];
+    let status: string;
+    let statusClass: string;
+
+    if (gForce < 5) {
+      status = 'STABLE';
+      statusClass = 'stable';
+      injuries.push('Minor jolt from impact');
+      injuries.push('Seatbelt tightening discomfort');
+    } else if (gForce < 10) {
+      status = 'STABLE';
+      statusClass = 'stable';
+      injuries.push('Airbag deployment burns (face/arms)');
+      injuries.push('Seatbelt bruising');
+      if (!isRearSeat) injuries.push('Steering wheel grip strain');
+    } else if (gForce < 18) {
+      status = 'MODERATE';
+      statusClass = 'serious';
+      injuries.push('Airbag facial abrasions');
+      injuries.push('Chest contusion from seatbelt');
+      injuries.push('Wrist/hand injuries from steering wheel');
+      if (isRearSeat) injuries.push('Knee impact with front seat');
+    } else if (gForce < 30) {
+      status = 'SERIOUS';
+      statusClass = 'serious';
+      injuries.push('Facial fractures from airbag');
+      injuries.push('Rib fractures from seatbelt');
+      injuries.push('Concussion from rapid deceleration');
+      injuries.push('Knee/femur fractures from dashboard');
+      if (!isRearSeat) injuries.push('Wrist fractures from steering wheel');
+    } else if (gForce < 50) {
+      status = 'CRITICAL';
+      statusClass = 'critical';
+      injuries.push('Severe facial trauma');
+      injuries.push('Multiple rib fractures');
+      injuries.push('Traumatic brain injury');
+      injuries.push('Internal organ damage');
+      injuries.push('Femur fractures');
+      if (!isRearSeat) injuries.push('Steering column chest impact');
+    } else if (gForce < 70) {
+      status = 'CRITICAL';
+      statusClass = 'critical';
+      injuries.push('Severe head trauma');
+      injuries.push('Aortic injury');
+      injuries.push('Spinal cord damage');
+      injuries.push('Multiple organ trauma');
+      injuries.push('Pelvic fractures');
+    } else {
+      status = 'FATAL';
+      statusClass = 'fatal';
+      injuries.push('Catastrophic head trauma');
+      injuries.push('Aortic rupture');
+      injuries.push('Complete spinal transection');
+      injuries.push('Multiple organ failure');
+      injuries.push('Non-survivable injuries');
+    }
+
+    return { status, statusClass, injuries };
   }
 
   /**

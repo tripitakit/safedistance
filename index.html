@@ -150,13 +150,25 @@
             </div>
 
             <!-- Lead Car Occupants Health Report -->
-            <div class="health-report lead-health">
+            <div id="leadHealthSection" class="health-report lead-health hidden">
               <h2>🚗 LEAD VEHICLE</h2>
               <div class="stat-row">
                 <span class="stat-label">Occupants:</span>
                 <span id="leadOccupants" class="stat-value occupant-count">1 person</span>
               </div>
               <div id="leadOccupantsList" class="occupants-list">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+
+            <!-- Rear Car Occupants Health Report -->
+            <div id="rearHealthSection" class="health-report rear-health hidden">
+              <h2>🚙 REAR VEHICLE</h2>
+              <div class="stat-row">
+                <span class="stat-label">Occupants:</span>
+                <span id="rearOccupants" class="stat-value occupant-count">1 person</span>
+              </div>
+              <div id="rearOccupantsList" class="occupants-list">
                 <!-- Dynamically populated -->
               </div>
             </div>
