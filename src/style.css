@@ -331,11 +331,98 @@ body {
   background: linear-gradient(135deg, #1a0000 0%, #330000 100%);
   border: 4px solid #ff0000;
   border-radius: 15px;
-  padding: 40px;
-  max-width: 600px;
-  width: 90%;
+  padding: 30px;
+  max-width: 1000px;
+  width: 95%;
   box-shadow: 0 0 50px rgba(255, 0, 0, 0.5);
   animation: crashAppear 0.5s ease-out;
+  max-height: 95vh;
+  overflow-y: auto;
+}
+
+/* Desktop: Two-column layout */
+@media (min-width: 768px) {
+  .crash-report {
+    padding: 25px 35px;
+  }
+
+  .crash-report h1 {
+    font-size: 32px;
+    margin-bottom: 20px;
+  }
+
+  .crash-report-content {
+    display: flex;
+    gap: 25px;
+    align-items: flex-start;
+  }
+
+  .crash-details {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .health-report {
+    flex: 1;
+    min-width: 0;
+    margin-top: 0 !important;
+  }
+
+  .crash-details h2,
+  .health-report h2 {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+
+  .stat-row {
+    padding: 6px 0;
+  }
+
+  .stat-label {
+    font-size: 13px;
+  }
+
+  .stat-value {
+    font-size: 15px;
+  }
+
+  .damage-level {
+    font-size: 24px !important;
+  }
+
+  .gforce-value {
+    font-size: 20px !important;
+  }
+
+  .patient-status {
+    font-size: 16px !important;
+  }
+
+  .injuries-list {
+    font-size: 12px;
+  }
+
+  .injuries-list li {
+    padding: 2px 0;
+  }
+
+  .prognosis-value {
+    font-size: 14px !important;
+  }
+
+  .crash-report-buttons {
+    display: flex;
+    gap: 15px;
+    margin-top: 20px;
+  }
+
+  .restart-btn,
+  .view-scores-btn {
+    flex: 1;
+    padding: 15px;
+    font-size: 18px;
+    margin-top: 0;
+  }
 }
 
 @keyframes crashAppear {
@@ -369,9 +456,10 @@ body {
 
 .crash-details {
   background: rgba(0, 0, 0, 0.5);
-  padding: 25px;
+  padding: 20px;
   border-radius: 10px;
-  margin-bottom: 30px;
+  margin-bottom: 15px;
+  border: 2px solid #ff3300;
 }
 
 .stat-row {
@@ -498,6 +586,103 @@ body {
 .prognosis-value.poor { color: #ff9900; }
 .prognosis-value.critical { color: #ff6600; }
 .prognosis-value.fatal { color: #ff0000; text-shadow: 0 0 10px rgba(255, 0, 0, 0.8); }
+
+/* Mobile: Compact vertical layout */
+@media (max-width: 767px) {
+  .crash-report {
+    padding: 15px;
+    max-height: 90vh;
+  }
+
+  .crash-report h1 {
+    font-size: 24px;
+    margin-bottom: 15px;
+  }
+
+  .crash-details h2,
+  .health-report h2 {
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+
+  .crash-details {
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+
+  .health-report {
+    padding: 12px;
+    margin-top: 10px;
+  }
+
+  .stat-row {
+    margin: 8px 0;
+    font-size: 14px;
+    padding: 4px 0;
+  }
+
+  .stat-label {
+    font-size: 12px;
+  }
+
+  .stat-value {
+    font-size: 13px;
+  }
+
+  .damage-level {
+    font-size: 18px !important;
+  }
+
+  .damage-row {
+    margin-top: 12px;
+    padding-top: 10px;
+  }
+
+  .gforce-value {
+    font-size: 16px !important;
+  }
+
+  .patient-status {
+    font-size: 14px !important;
+  }
+
+  .injuries-section {
+    margin: 8px 0;
+    padding: 8px;
+  }
+
+  .injuries-list {
+    font-size: 11px;
+  }
+
+  .injuries-list li {
+    padding: 2px 0;
+  }
+
+  .prognosis-row {
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+
+  .prognosis-value {
+    font-size: 13px !important;
+  }
+
+  .crash-report-buttons {
+    margin-top: 12px;
+  }
+
+  .restart-btn {
+    padding: 12px;
+    font-size: 16px;
+  }
+
+  .view-scores-btn {
+    padding: 10px;
+    font-size: 14px;
+    margin-top: 8px;
+  }
+}
 
 .restart-btn {
   width: 100%;
