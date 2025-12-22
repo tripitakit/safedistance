@@ -549,15 +549,25 @@ class SafeDistanceSimulator {
 
     // Rear car AI: accelerate/brake based on distance to player
     const distanceError = currentDistance - this.rearCarTargetDistance;
+    const closingSpeed = this.rearCarVelocity - playerSpeedMs; // Positive = approaching
 
-    // Aggressive driver - fast acceleration, slow to brake
+    // Aggressive driver - fast acceleration, but smarter braking at short distances
     let targetAcceleration = 0;
-    if (distanceError > 2) {
+
+    // Emergency braking when very close and still approaching
+    if (currentDistance < 4 && closingSpeed > 0) {
+      // Hard brake proportional to danger (close + fast approach = more braking)
+      const urgency = (4 - currentDistance) / 4; // 0-1, higher when closer
+      const speedFactor = Math.min(closingSpeed / 5, 1); // 0-1, higher when approaching faster
+      targetAcceleration = -8 * (urgency + speedFactor); // Up to -16 m/s² emergency brake
+    } else if (distanceError > 2) {
       // Too far behind - accelerate aggressively to catch up
       targetAcceleration = Math.min(7, distanceError * 1.5); // m/s² - faster catch up
-    } else if (distanceError < -0.3) {
-      // Getting too close - brake but with delayed/weak reaction
-      targetAcceleration = Math.max(-5, distanceError * 2); // Weaker braking
+    } else if (distanceError < -0.3 || (closingSpeed > 2 && currentDistance < 6)) {
+      // Getting too close OR approaching fast at medium distance - brake
+      const distanceBrake = distanceError < 0 ? distanceError * 2.5 : 0;
+      const closingBrake = closingSpeed > 0 ? -closingSpeed * 1.5 : 0;
+      targetAcceleration = Math.max(-10, distanceBrake + closingBrake);
     } else {
       // Match player speed but tends to go slightly faster
       const speedDiff = playerSpeedMs - this.rearCarVelocity;

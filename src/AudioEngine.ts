@@ -226,12 +226,16 @@ export class AudioEngine {
 
       // Volume based on intensity and speed
       const speedFactor = Math.min(1, speedKmh / 100);
-      const volume = (intensity - 0.3) * 0.7 * speedFactor * 0.15;
+      const volume = (intensity - 0.3) * 0.7 * speedFactor * 0.2;
       this.brakeGain.gain.setTargetAtTime(volume, now, 0.05);
 
-      // Higher pitch at higher speeds
-      const baseFreq = 800 + speedKmh * 10;
-      this.brakeFilter.frequency.setTargetAtTime(baseFreq, now, 0.05);
+      // High squeaky pitch - tires on smooth surface
+      const baseFreq = 2500 + speedKmh * 20 + Math.sin(now * 30) * 200;
+      this.brakeFilter.frequency.setTargetAtTime(baseFreq, now, 0.02);
+
+      // Vary the Q for more screech variation
+      const qValue = 8 + Math.sin(now * 15) * 3;
+      this.brakeFilter.Q.setTargetAtTime(qValue, now, 0.02);
     }
   }
 
@@ -246,11 +250,11 @@ export class AudioEngine {
     this.brakeNoiseSource.buffer = noiseBuffer;
     this.brakeNoiseSource.loop = true;
 
-    // Band-pass filter for tire screech character
+    // High-pass + resonant filter for squeaky tire screech
     this.brakeFilter = this.audioContext.createBiquadFilter();
     this.brakeFilter.type = 'bandpass';
-    this.brakeFilter.frequency.value = 1500;
-    this.brakeFilter.Q.value = 3;
+    this.brakeFilter.frequency.value = 3000;
+    this.brakeFilter.Q.value = 10;
 
     // Gain control
     this.brakeGain = this.audioContext.createGain();
