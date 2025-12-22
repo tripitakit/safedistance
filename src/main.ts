@@ -585,11 +585,13 @@ class SafeDistanceSimulator {
     this.rearCarDistance = playerPos - this.rearCarPosition;
 
     // COLLISION DETECTION - rear car crashes into player!
-    // Only possible if player brakes very hard (>60%) at close range - rare event
-    const collisionThreshold = 2.5; // Very close - almost touching
-    const playerBrakingVeryHard = this.inputController.getBrakingInput() > 0.6;
     const speedDifference = this.rearCarVelocity - playerSpeedMs;
-    if (this.rearCarDistance < collisionThreshold && speedDifference > 5 && playerBrakingVeryHard) {
+
+    // Crash if: cars overlap OR very close while rear car is still approaching
+    const carsOverlap = this.rearCarDistance <= 1.0; // Cars are touching/overlapping
+    const imminentCrash = this.rearCarDistance < 2.0 && speedDifference > 3; // Very close and approaching fast
+
+    if (carsOverlap || imminentCrash) {
       // Rear-end collision! Game over - player was hit from behind
       this.triggerRearCollision();
       return;
