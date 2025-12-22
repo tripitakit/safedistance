@@ -842,11 +842,12 @@ body {
 /* Adjust speedometer on mobile to not overlap with controls */
 @media (max-width: 768px), (pointer: coarse) {
   .speedometer {
-    bottom: 220px;
-    right: 50%;
-    transform: translateX(50%);
-    width: 150px;
-    height: 150px;
+    top: 10px;
+    bottom: auto;
+    right: 10px;
+    transform: none;
+    width: 100px;
+    height: 100px;
   }
 
   .touch-btn {
