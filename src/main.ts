@@ -1783,16 +1783,17 @@ class SafeDistanceSimulator {
 
   /**
    * Calculate and display the First Aid Health Report based on G-forces
-   * G-force ranges:
-   * - 20-50 g: serious but survivable accidents
-   * - 50-80 g: survival limit with optimal protection (seatbelt, airbag)
-   * - 100+ g: generally fatal
-   * - 255+ g: catastrophic damage certain
+   * Based on real crash biomechanics research:
+   * - ~18 g: Injuries begin (broken bones, internal bruising)
+   * - 20-30 g: Typical belted 30mph crash, survivable but serious
+   * - ≥50 g: Associated with traumatic brain injury (TBI)
+   * - 70-100 g: Often fatal (Princess Diana's fatal crash was 70-100 g)
+   * Sources: PubMed, IIHS, Physics Factbook
    */
   private updateHealthReport(speedDiffKmh: number): void {
     // Calculate G-force: G = (ΔV / Δt) / 9.81
     const deltaV = speedDiffKmh / 3.6; // Convert to m/s
-    const collisionDuration = 0.1; // seconds (typical car crash)
+    const collisionDuration = 0.1; // seconds (typical car crash deceleration)
     const acceleration = deltaV / collisionDuration;
     const gForce = acceleration / 9.81;
 
@@ -1800,77 +1801,101 @@ class SafeDistanceSimulator {
     this.gForceElement.textContent = `${gForce.toFixed(1)} g`;
 
     // Determine patient status and prognosis based on G-force
+    // Thresholds based on real crash research data
     let patientStatus: string;
     let statusClass: string;
     let prognosis: string;
     let prognosisClass: string;
     const injuries: { text: string; severity: string }[] = [];
 
-    if (gForce < 20) {
-      // Minor impact
+    if (gForce < 5) {
+      // Very minor impact - minimal injury risk
       patientStatus = 'STABLE';
       statusClass = 'stable';
       prognosis = 'Full recovery expected';
       prognosisClass = 'good';
-      injuries.push({ text: 'Minor bruising from seatbelt', severity: 'minor' });
-      injuries.push({ text: 'Possible mild whiplash', severity: 'minor' });
-    } else if (gForce < 50) {
-      // Serious but survivable (20-50 g)
-      patientStatus = 'SERIOUS';
+      injuries.push({ text: 'Minor discomfort', severity: 'minor' });
+      injuries.push({ text: 'Possible light bruising from seatbelt', severity: 'minor' });
+    } else if (gForce < 10) {
+      // Minor impact - whiplash begins
+      patientStatus = 'STABLE';
+      statusClass = 'stable';
+      prognosis = 'Recovery with rest';
+      prognosisClass = 'good';
+      injuries.push({ text: 'Whiplash (cervical strain)', severity: 'moderate' });
+      injuries.push({ text: 'Seatbelt bruising across chest', severity: 'minor' });
+      injuries.push({ text: 'Muscle soreness', severity: 'minor' });
+    } else if (gForce < 18) {
+      // Moderate impact - injuries likely
+      patientStatus = 'MODERATE';
       statusClass = 'critical';
       prognosis = 'Recovery with treatment';
       prognosisClass = 'guarded';
-      injuries.push({ text: 'Whiplash injury (cervical strain)', severity: 'moderate' });
-      injuries.push({ text: 'Chest contusion from seatbelt', severity: 'moderate' });
-      injuries.push({ text: 'Possible rib fractures', severity: 'serious' });
-      injuries.push({ text: 'Mild concussion', severity: 'moderate' });
-      if (gForce > 35) {
-        injuries.push({ text: 'Internal bruising', severity: 'serious' });
-      }
-    } else if (gForce < 80) {
-      // Survival limit with protection (50-80 g)
+      injuries.push({ text: 'Significant whiplash injury', severity: 'moderate' });
+      injuries.push({ text: 'Chest contusion from restraints', severity: 'moderate' });
+      injuries.push({ text: 'Possible minor rib fractures', severity: 'serious' });
+      injuries.push({ text: 'Mild concussion possible', severity: 'moderate' });
+      injuries.push({ text: 'Soft tissue damage', severity: 'moderate' });
+    } else if (gForce < 30) {
+      // Serious impact - broken bones, significant injuries (18g is injury threshold)
+      patientStatus = 'SERIOUS';
+      statusClass = 'severe';
+      prognosis = 'Hospitalization required';
+      prognosisClass = 'poor';
+      injuries.push({ text: 'Rib fractures (multiple)', severity: 'serious' });
+      injuries.push({ text: 'Sternum fracture possible', severity: 'serious' });
+      injuries.push({ text: 'Concussion', severity: 'serious' });
+      injuries.push({ text: 'Internal organ bruising', severity: 'serious' });
+      injuries.push({ text: 'Cervical spine strain', severity: 'serious' });
+      injuries.push({ text: 'Pulmonary contusion', severity: 'serious' });
+    } else if (gForce < 50) {
+      // Critical impact - TBI risk, severe internal injuries
       patientStatus = 'CRITICAL';
       statusClass = 'severe';
       prognosis = 'Life-threatening - ICU required';
       prognosisClass = 'poor';
-      injuries.push({ text: 'Severe whiplash / cervical trauma', severity: 'critical' });
-      injuries.push({ text: 'Multiple rib fractures', severity: 'critical' });
-      injuries.push({ text: 'Pulmonary contusion', severity: 'critical' });
+      injuries.push({ text: 'Multiple rib fractures with flail chest', severity: 'critical' });
       injuries.push({ text: 'Traumatic brain injury (TBI)', severity: 'critical' });
       injuries.push({ text: 'Internal hemorrhaging', severity: 'critical' });
+      injuries.push({ text: 'Spleen/liver laceration', severity: 'critical' });
+      injuries.push({ text: 'Cervical vertebrae damage', severity: 'critical' });
+      injuries.push({ text: 'Cardiac contusion', severity: 'critical' });
       injuries.push({ text: 'Aortic stress injury', severity: 'critical' });
-    } else if (gForce < 100) {
-      // Beyond survival limit (80-100 g)
+    } else if (gForce < 70) {
+      // Life-threatening - survival uncertain (50g+ = TBI threshold)
       patientStatus = 'CRITICAL - UNRESPONSIVE';
       statusClass = 'fatal';
-      prognosis = 'Survival unlikely';
+      prognosis = 'Survival uncertain - Emergency surgery';
       prognosisClass = 'critical';
       injuries.push({ text: 'Severe traumatic brain injury', severity: 'fatal' });
-      injuries.push({ text: 'Cervical spine fracture', severity: 'fatal' });
-      injuries.push({ text: 'Aortic rupture risk', severity: 'fatal' });
+      injuries.push({ text: 'Diffuse axonal injury (DAI)', severity: 'fatal' });
+      injuries.push({ text: 'Aortic dissection risk', severity: 'fatal' });
       injuries.push({ text: 'Multiple organ trauma', severity: 'fatal' });
-      injuries.push({ text: 'Flail chest', severity: 'fatal' });
       injuries.push({ text: 'Massive internal bleeding', severity: 'fatal' });
-    } else if (gForce < 255) {
-      // Fatal (100+ g)
-      patientStatus = 'DECEASED';
+      injuries.push({ text: 'Cervical spine fracture', severity: 'fatal' });
+      injuries.push({ text: 'Flail chest with respiratory failure', severity: 'fatal' });
+    } else if (gForce < 100) {
+      // Usually fatal range (Princess Diana's crash was 70-100g)
+      patientStatus = 'DECEASED / DYING';
       statusClass = 'fatal';
-      prognosis = 'Fatal injuries sustained';
+      prognosis = 'Fatal - Non-survivable injuries';
       prognosisClass = 'fatal';
-      injuries.push({ text: 'Unsurvivable head trauma', severity: 'fatal' });
+      injuries.push({ text: 'Aortic rupture/transection', severity: 'fatal' });
+      injuries.push({ text: 'Fatal brain hemorrhage', severity: 'fatal' });
       injuries.push({ text: 'Complete cervical dissociation', severity: 'fatal' });
-      injuries.push({ text: 'Aortic transection', severity: 'fatal' });
+      injuries.push({ text: 'Cardiac rupture', severity: 'fatal' });
+      injuries.push({ text: 'Multiple organ failure', severity: 'fatal' });
       injuries.push({ text: 'Massive polytrauma', severity: 'fatal' });
-      injuries.push({ text: 'Complete organ failure', severity: 'fatal' });
     } else {
-      // Catastrophic (255+ g)
+      // Catastrophic - instant death (unbelted 30mph crash = 150g)
       patientStatus = 'DECEASED';
       statusClass = 'fatal';
-      prognosis = 'Catastrophic - Non-survivable';
+      prognosis = 'Instant fatality';
       prognosisClass = 'fatal';
-      injuries.push({ text: 'Catastrophic total body trauma', severity: 'fatal' });
-      injuries.push({ text: 'Complete structural failure', severity: 'fatal' });
-      injuries.push({ text: 'Instant fatality', severity: 'fatal' });
+      injuries.push({ text: 'Catastrophic total body destruction', severity: 'fatal' });
+      injuries.push({ text: 'Complete vascular disruption', severity: 'fatal' });
+      injuries.push({ text: 'Unsurvivable head trauma', severity: 'fatal' });
+      injuries.push({ text: 'Total skeletal failure', severity: 'fatal' });
     }
 
     // Update patient status
@@ -1887,14 +1912,18 @@ class SafeDistanceSimulator {
     this.prognosisElement.className = `stat-value prognosis-value ${prognosisClass}`;
 
     // Color the G-force based on severity
-    if (gForce < 20) {
+    if (gForce < 5) {
       this.gForceElement.style.color = '#00ff00';
-    } else if (gForce < 50) {
+    } else if (gForce < 10) {
+      this.gForceElement.style.color = '#88ff00';
+    } else if (gForce < 18) {
       this.gForceElement.style.color = '#ffff00';
-    } else if (gForce < 80) {
-      this.gForceElement.style.color = '#ff9900';
-    } else if (gForce < 100) {
+    } else if (gForce < 30) {
+      this.gForceElement.style.color = '#ffaa00';
+    } else if (gForce < 50) {
       this.gForceElement.style.color = '#ff6600';
+    } else if (gForce < 70) {
+      this.gForceElement.style.color = '#ff3300';
     } else {
       this.gForceElement.style.color = '#ff0000';
     }
@@ -1943,7 +1972,9 @@ class SafeDistanceSimulator {
 
   /**
    * Get injuries for a lead vehicle occupant based on G-force
-   * Rear-end collision injuries: whiplash, head/neck injuries from sudden acceleration
+   * Rear-end collision injuries: whiplash from sudden forward acceleration
+   * Generally less severe than frontal impacts but whiplash is the primary concern
+   * Based on real biomechanics research
    */
   private getOccupantInjuries(gForce: number, isRearSeat: boolean): {
     status: string;
@@ -1954,46 +1985,66 @@ class SafeDistanceSimulator {
     let status: string;
     let statusClass: string;
 
-    if (gForce < 15) {
+    if (gForce < 5) {
+      // Very minor - discomfort only
       status = 'STABLE';
       statusClass = 'stable';
-      injuries.push('Minor neck strain');
-      if (!isRearSeat) injuries.push('Mild headrest impact');
-    } else if (gForce < 35) {
+      injuries.push('Minor neck stiffness');
+      injuries.push('Light muscle tension');
+    } else if (gForce < 10) {
+      // Minor - whiplash begins
+      status = 'STABLE';
+      statusClass = 'stable';
+      injuries.push('Whiplash (cervical strain)');
+      injuries.push('Neck muscle soreness');
+      if (!isRearSeat) injuries.push('Headrest impact bruising');
+    } else if (gForce < 18) {
+      // Moderate - significant whiplash
+      status = 'MODERATE';
+      statusClass = 'serious';
+      injuries.push('Significant whiplash injury');
+      injuries.push('Cervical ligament strain');
+      injuries.push('Headrest impact contusion');
+      if (isRearSeat) {
+        injuries.push('Seat belt chest bruising');
+      }
+    } else if (gForce < 30) {
+      // Serious - structural damage begins (18g threshold)
       status = 'SERIOUS';
       statusClass = 'serious';
-      injuries.push('Whiplash (cervical hyperextension)');
-      injuries.push('Neck muscle strain');
-      if (!isRearSeat) {
-        injuries.push('Headrest impact contusion');
-      } else {
-        injuries.push('Seat belt bruising');
-      }
-    } else if (gForce < 60) {
-      status = 'CRITICAL';
-      statusClass = 'critical';
-      injuries.push('Severe whiplash injury');
-      injuries.push('Cervical disc herniation');
-      injuries.push('Concussion from headrest');
-      if (!isRearSeat) {
-        injuries.push('Facial lacerations');
-      }
+      injuries.push('Severe whiplash with nerve damage');
+      injuries.push('Cervical disc bulging/herniation');
+      injuries.push('Concussion from head snap');
       injuries.push('Thoracic spine strain');
-    } else if (gForce < 90) {
+      if (!isRearSeat) {
+        injuries.push('Facial contusions from headrest');
+      }
+    } else if (gForce < 50) {
+      // Critical - severe injuries
       status = 'CRITICAL';
       statusClass = 'critical';
       injuries.push('Cervical vertebrae fracture');
-      injuries.push('Severe traumatic brain injury');
-      injuries.push('Spinal cord compression');
-      injuries.push('Internal bleeding');
-      injuries.push('Multiple contusions');
+      injuries.push('Traumatic brain injury (TBI)');
+      injuries.push('Spinal cord contusion');
+      injuries.push('Internal organ bruising');
+      injuries.push('Thoracic spine damage');
+    } else if (gForce < 70) {
+      // Life-threatening - 50g+ TBI threshold
+      status = 'CRITICAL';
+      statusClass = 'critical';
+      injuries.push('Severe spinal cord injury');
+      injuries.push('Diffuse axonal brain injury');
+      injuries.push('Cervical spine fracture/dislocation');
+      injuries.push('Internal hemorrhaging');
+      injuries.push('Respiratory compromise');
     } else {
+      // Fatal range (70g+)
       status = 'FATAL';
       statusClass = 'fatal';
-      injuries.push('Cervical spine dissociation');
-      injuries.push('Fatal brain trauma');
-      injuries.push('Internal decapitation risk');
-      injuries.push('Massive internal hemorrhage');
+      injuries.push('Atlanto-occipital dissociation');
+      injuries.push('Fatal brainstem injury');
+      injuries.push('Complete spinal cord transection');
+      injuries.push('Internal decapitation');
     }
 
     return { status, statusClass, injuries };
