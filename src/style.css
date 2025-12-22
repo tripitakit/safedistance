@@ -839,15 +839,31 @@ body {
   display: block;
 }
 
-/* Adjust speedometer on mobile to not overlap with controls */
+/* Adjust layout on mobile to not overlap */
 @media (max-width: 768px), (pointer: coarse) {
+  /* Move score to top left */
+  .score-overlay {
+    left: 10px;
+    transform: none;
+    padding: 10px 20px;
+  }
+
+  .score-label {
+    font-size: 12px;
+  }
+
+  .score-value-overlay {
+    font-size: 28px;
+  }
+
+  /* Speedometer to top right */
   .speedometer {
     top: 10px;
     bottom: auto;
     right: 10px;
     transform: none;
-    width: 100px;
-    height: 100px;
+    width: 80px;
+    height: 80px;
   }
 
   .touch-btn {
