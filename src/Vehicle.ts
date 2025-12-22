@@ -200,18 +200,85 @@ export class Vehicle {
       rightLight.position.set(0.5, 0.6, -1.2);
       group.add(rightLight);
 
-      // Spotlights for visible beam effect
-      const leftSpot = new THREE.SpotLight(0xffffdd, 3, 40, Math.PI / 8, 0.5);
+      // Spotlights for visible beam effect - stronger
+      const leftSpot = new THREE.SpotLight(0xffffdd, 5, 50, Math.PI / 6, 0.3);
       leftSpot.position.set(-0.5, 0.6, -0.9);
-      leftSpot.target.position.set(-0.5, 0, -20);
+      leftSpot.target.position.set(-1, -0.5, -25);
       group.add(leftSpot);
       group.add(leftSpot.target);
 
-      const rightSpot = new THREE.SpotLight(0xffffdd, 3, 40, Math.PI / 8, 0.5);
+      const rightSpot = new THREE.SpotLight(0xffffdd, 5, 50, Math.PI / 6, 0.3);
       rightSpot.position.set(0.5, 0.6, -0.9);
-      rightSpot.target.position.set(0.5, 0, -20);
+      rightSpot.target.position.set(1, -0.5, -25);
       group.add(rightSpot);
       group.add(rightSpot.target);
+
+      // VISIBLE LIGHT BEAM CONES - mesh-based for clear visibility
+      const beamLength = 25;
+      const beamEndRadius = 4;
+
+      // Create cone geometry for light beam (pointing forward in -Z)
+      const beamGeometry = new THREE.ConeGeometry(beamEndRadius, beamLength, 16, 1, true);
+      const beamMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffcc,
+        transparent: true,
+        opacity: 0.08,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+
+      // Left beam cone
+      const leftBeam = new THREE.Mesh(beamGeometry, beamMaterial);
+      leftBeam.position.set(-0.5, 0.5, -beamLength / 2 - 1);
+      leftBeam.rotation.x = Math.PI / 2; // Point forward
+      leftBeam.rotation.z = Math.PI; // Flip so wide end is forward
+      group.add(leftBeam);
+
+      // Right beam cone
+      const rightBeam = new THREE.Mesh(beamGeometry.clone(), beamMaterial.clone());
+      rightBeam.position.set(0.5, 0.5, -beamLength / 2 - 1);
+      rightBeam.rotation.x = Math.PI / 2;
+      rightBeam.rotation.z = Math.PI;
+      group.add(rightBeam);
+
+      // GROUND LIGHT PATCHES - bright spots on the road where beams hit
+      const groundLightGeometry = new THREE.PlaneGeometry(6, 12);
+      const groundLightMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffdd,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+
+      // Left ground light patch
+      const leftGroundLight = new THREE.Mesh(groundLightGeometry, groundLightMaterial);
+      leftGroundLight.position.set(-1.5, 0.02, -18); // Just above road surface
+      leftGroundLight.rotation.x = -Math.PI / 2; // Flat on ground
+      group.add(leftGroundLight);
+
+      // Right ground light patch
+      const rightGroundLight = new THREE.Mesh(groundLightGeometry.clone(), groundLightMaterial.clone());
+      rightGroundLight.position.set(1.5, 0.02, -18);
+      rightGroundLight.rotation.x = -Math.PI / 2;
+      group.add(rightGroundLight);
+
+      // Center overlap light (brighter where beams merge)
+      const centerLightGeometry = new THREE.PlaneGeometry(4, 8);
+      const centerLightMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffee,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      const centerGroundLight = new THREE.Mesh(centerLightGeometry, centerLightMaterial);
+      centerGroundLight.position.set(0, 0.03, -14);
+      centerGroundLight.rotation.x = -Math.PI / 2;
+      group.add(centerGroundLight);
     }
 
     // Add brake lights, rear windscreen, and license plate to LEAD vehicle only (yellow car)

@@ -922,7 +922,101 @@ class SafeDistanceSimulator {
     rightLine.position.set(roadWidth / 2, 0.01, 0);
     roadGroup.add(rightLine);
 
-    // Grass on sides
+    // Emergency lanes (shoulders) on each side
+    const shoulderWidth = 2.5;
+    const shoulderGeometry = new THREE.PlaneGeometry(shoulderWidth, roadLength);
+    const shoulderMaterial = new THREE.MeshStandardMaterial({
+      color: 0x444444, // Slightly lighter than road
+      roughness: 0.85
+    });
+
+    // Left emergency lane
+    const leftShoulder = new THREE.Mesh(shoulderGeometry, shoulderMaterial);
+    leftShoulder.rotation.x = -Math.PI / 2;
+    leftShoulder.position.set(-roadWidth / 2 - shoulderWidth / 2, 0.001, 0);
+    leftShoulder.receiveShadow = true;
+    roadGroup.add(leftShoulder);
+
+    // Right emergency lane
+    const rightShoulder = new THREE.Mesh(shoulderGeometry, shoulderMaterial.clone());
+    rightShoulder.rotation.x = -Math.PI / 2;
+    rightShoulder.position.set(roadWidth / 2 + shoulderWidth / 2, 0.001, 0);
+    rightShoulder.receiveShadow = true;
+    roadGroup.add(rightShoulder);
+
+    // Guard rails on outer edge of emergency lanes
+    const guardRailHeight = 0.8;
+    const guardRailPostSpacing = 4; // meters between posts
+    const guardRailX = roadWidth / 2 + shoulderWidth; // Position at outer edge of shoulder
+
+    // Guard rail material
+    const railMaterial = new THREE.MeshStandardMaterial({
+      color: 0xaaaaaa,
+      metalness: 0.7,
+      roughness: 0.3
+    });
+    const postMaterial = new THREE.MeshStandardMaterial({
+      color: 0x666666,
+      metalness: 0.5,
+      roughness: 0.4
+    });
+
+    // Create continuous rail beams (W-beam style)
+    const railBeamGeometry = new THREE.BoxGeometry(0.08, 0.3, roadLength);
+
+    // Left guard rail beam
+    const leftRailBeam = new THREE.Mesh(railBeamGeometry, railMaterial);
+    leftRailBeam.position.set(-guardRailX - 0.1, guardRailHeight - 0.15, 0);
+    roadGroup.add(leftRailBeam);
+
+    // Right guard rail beam
+    const rightRailBeam = new THREE.Mesh(railBeamGeometry.clone(), railMaterial.clone());
+    rightRailBeam.position.set(guardRailX + 0.1, guardRailHeight - 0.15, 0);
+    roadGroup.add(rightRailBeam);
+
+    // Lower rail beam for double-rail look
+    const lowerRailGeometry = new THREE.BoxGeometry(0.06, 0.2, roadLength);
+
+    const leftLowerRail = new THREE.Mesh(lowerRailGeometry, railMaterial.clone());
+    leftLowerRail.position.set(-guardRailX - 0.1, guardRailHeight - 0.45, 0);
+    roadGroup.add(leftLowerRail);
+
+    const rightLowerRail = new THREE.Mesh(lowerRailGeometry.clone(), railMaterial.clone());
+    rightLowerRail.position.set(guardRailX + 0.1, guardRailHeight - 0.45, 0);
+    roadGroup.add(rightLowerRail);
+
+    // Guard rail posts
+    const postGeometry = new THREE.BoxGeometry(0.1, guardRailHeight, 0.1);
+    for (let z = -roadLength / 2; z < roadLength / 2; z += guardRailPostSpacing) {
+      // Left post
+      const leftPost = new THREE.Mesh(postGeometry, postMaterial);
+      leftPost.position.set(-guardRailX - 0.1, guardRailHeight / 2, z);
+      roadGroup.add(leftPost);
+
+      // Right post
+      const rightPost = new THREE.Mesh(postGeometry, postMaterial.clone());
+      rightPost.position.set(guardRailX + 0.1, guardRailHeight / 2, z);
+      roadGroup.add(rightPost);
+    }
+
+    // Reflector posts on guard rails (orange/red reflectors)
+    const reflectorGeometry = new THREE.BoxGeometry(0.05, 0.12, 0.02);
+    const leftReflectorMaterial = new THREE.MeshBasicMaterial({ color: 0xff6600 }); // Orange for right side of road
+    const rightReflectorMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Red for left side
+
+    for (let z = -roadLength / 2; z < roadLength / 2; z += guardRailPostSpacing * 2) {
+      // Left reflector (red - facing traffic)
+      const leftReflector = new THREE.Mesh(reflectorGeometry, rightReflectorMaterial);
+      leftReflector.position.set(-guardRailX + 0.02, guardRailHeight - 0.15, z);
+      roadGroup.add(leftReflector);
+
+      // Right reflector (orange)
+      const rightReflector = new THREE.Mesh(reflectorGeometry, leftReflectorMaterial);
+      rightReflector.position.set(guardRailX - 0.02, guardRailHeight - 0.15, z);
+      roadGroup.add(rightReflector);
+    }
+
+    // Grass on sides (adjusted position for guard rails)
     const grassGeometry = new THREE.PlaneGeometry(100, roadLength);
     const grassMaterial = new THREE.MeshStandardMaterial({
       color: 0x228b22,
@@ -931,13 +1025,13 @@ class SafeDistanceSimulator {
 
     const leftGrass = new THREE.Mesh(grassGeometry, grassMaterial);
     leftGrass.rotation.x = -Math.PI / 2;
-    leftGrass.position.set(-55, -0.01, 0);
+    leftGrass.position.set(-guardRailX - 50, -0.01, 0);
     leftGrass.receiveShadow = true;
     roadGroup.add(leftGrass);
 
-    const rightGrass = new THREE.Mesh(grassGeometry, grassMaterial);
+    const rightGrass = new THREE.Mesh(grassGeometry, grassMaterial.clone());
     rightGrass.rotation.x = -Math.PI / 2;
-    rightGrass.position.set(55, -0.01, 0);
+    rightGrass.position.set(guardRailX + 50, -0.01, 0);
     rightGrass.receiveShadow = true;
     roadGroup.add(rightGrass);
 
