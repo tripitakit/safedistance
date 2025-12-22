@@ -25,20 +25,22 @@ export class Vehicle {
     const group = new THREE.Group();
 
     // Car body (shortened for player vehicle) - REFLECTIVE
-    const bodyLength = color === 0x0000ff ? 1.5 : 4; // Player car hood is much shorter
-    const bodyWidth = color === 0x0000ff ? 1.4 : 2; // Player car hood is narrower
-    const bodyGeometry = new THREE.BoxGeometry(bodyWidth, 1, bodyLength);
+    const isPlayerCar = color === 0x0000ff;
+    const bodyLength = isPlayerCar ? 1.5 : 4; // Player car hood is much shorter
+    const bodyWidth = isPlayerCar ? 1.4 : 2; // Player car hood is narrower
+    const bodyHeight = isPlayerCar ? 1 : 0.8; // Lead car is thinner to sit on wheels
+    const bodyGeometry = new THREE.BoxGeometry(bodyWidth, bodyHeight, bodyLength);
     const bodyMaterial = new THREE.MeshStandardMaterial({
       color,
       // Make player car hood semi-transparent to see wheels through it
-      transparent: color === 0x0000ff,
-      opacity: color === 0x0000ff ? 0.4 : 1.0,
+      transparent: isPlayerCar,
+      opacity: isPlayerCar ? 0.4 : 1.0,
       metalness: 0.8,
       roughness: 0.2
     });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    body.position.y = 0.5;
-    // Don't shift player car body - keep it in normal position
+    // Player car at y=0.5, lead car raised to sit on wheels
+    body.position.y = isPlayerCar ? 0.5 : 0.8;
     group.add(body);
 
     // Car cabin - REFLECTIVE
@@ -51,37 +53,54 @@ export class Vehicle {
     }
     const cabinMaterial = new THREE.MeshStandardMaterial({
       color: cabinColor,
-      transparent: color === 0x0000ff,
-      opacity: color === 0x0000ff ? 0.3 : 1.0, // Semi-transparent for player to see through
+      transparent: isPlayerCar,
+      opacity: isPlayerCar ? 0.3 : 1.0, // Semi-transparent for player to see through
       metalness: 0.7,
       roughness: 0.3
     });
     const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
-    cabin.position.y = 1.4;
-    cabin.position.z = color === 0x0000ff ? 0 : -0.5;
+    // Player cabin at y=1.4, lead car cabin raised to y=1.6
+    cabin.position.y = isPlayerCar ? 1.4 : 1.6;
+    cabin.position.z = isPlayerCar ? 0 : -0.5;
     group.add(cabin);
 
     // Wheels with emissive material for brake/accel feedback
-    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
-
     const wheelPositions = [
-      [-0.9, 0.4, 1.2],
-      [0.9, 0.4, 1.2],
-      [-0.9, 0.4, -1.2],
-      [0.9, 0.4, -1.2]
+      { pos: [-0.9, 0.4, 1.2], side: -1 },
+      { pos: [0.9, 0.4, 1.2], side: 1 },
+      { pos: [-0.9, 0.4, -1.2], side: -1 },
+      { pos: [0.9, 0.4, -1.2], side: 1 }
     ];
 
-    wheelPositions.forEach(pos => {
-      const wheelMaterial = new THREE.MeshStandardMaterial({
-        color: 0x222222,
+    wheelPositions.forEach(({ pos, side }) => {
+      // Tire (black cylinder)
+      const tireGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+      const tireMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1a1a1a,
         emissive: 0x000000,
-        emissiveIntensity: 1
+        emissiveIntensity: 1,
+        roughness: 0.9
       });
-      const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(pos[0], pos[1], pos[2]);
-      wheel.userData.isWheel = true; // Mark as wheel for feedback updates
-      group.add(wheel);
+      const tire = new THREE.Mesh(tireGeometry, tireMaterial);
+      tire.rotation.z = Math.PI / 2;
+      tire.position.set(pos[0], pos[1], pos[2]);
+      // Only mark player car wheels for feedback (not lead car)
+      if (isPlayerCar) {
+        tire.userData.isWheel = true;
+      }
+      group.add(tire);
+
+      // Silver rim (visible hubcap)
+      const rimGeometry = new THREE.CylinderGeometry(0.22, 0.22, 0.32, 16);
+      const rimMaterial = new THREE.MeshStandardMaterial({
+        color: 0xaaaaaa,
+        roughness: 0.3,
+        metalness: 0.8
+      });
+      const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+      rim.rotation.z = Math.PI / 2;
+      rim.position.set(pos[0] + side * 0.02, pos[1], pos[2]);
+      group.add(rim);
     });
 
     // Add mirrors to PLAYER vehicle only (blue car)
@@ -290,19 +309,19 @@ export class Vehicle {
         emissiveIntensity: 2
       });
 
-      // Left brake light (at rear of car - positive Z)
+      // Left brake light (at rear of car - positive Z) - raised with body
       const leftBrakeLight = new THREE.Mesh(brakeLightGeometry, brakeLightMaterial.clone());
-      leftBrakeLight.position.set(-0.8, 0.9, 2.1);
+      leftBrakeLight.position.set(-0.8, 1.0, 2.1);
       leftBrakeLight.userData.isBrakeLight = true;
       group.add(leftBrakeLight);
 
-      // Right brake light (at rear of car - positive Z)
+      // Right brake light (at rear of car - positive Z) - raised with body
       const rightBrakeLight = new THREE.Mesh(brakeLightGeometry, brakeLightMaterial.clone());
-      rightBrakeLight.position.set(0.8, 0.9, 2.1);
+      rightBrakeLight.position.set(0.8, 1.0, 2.1);
       rightBrakeLight.userData.isBrakeLight = true;
       group.add(rightBrakeLight);
 
-      // Rear windscreen (back window) - angled glass panel
+      // Rear windscreen (back window) - angled glass panel - raised with cabin
       const rearWindowGeometry = new THREE.PlaneGeometry(1.6, 0.7);
       const rearWindowMaterial = new THREE.MeshStandardMaterial({
         color: 0x88ccff,
@@ -313,30 +332,30 @@ export class Vehicle {
         side: THREE.DoubleSide
       });
       const rearWindow = new THREE.Mesh(rearWindowGeometry, rearWindowMaterial);
-      rearWindow.position.set(0, 1.4, 1.05); // Flat at rear of cabin
+      rearWindow.position.set(0, 1.6, 1.05); // Raised to match cabin
       group.add(rearWindow);
 
-      // License plate - white background with border
+      // License plate - white background with border - raised with body
       const plateGeometry = new THREE.PlaneGeometry(0.8, 0.25);
       const plateMaterial = new THREE.MeshStandardMaterial({
         color: 0xffffff,
         roughness: 0.3
       });
       const plate = new THREE.Mesh(plateGeometry, plateMaterial);
-      plate.position.set(0, 0.45, 2.08);
+      plate.position.set(0, 0.6, 2.08);
       group.add(plate);
 
-      // License plate border
+      // License plate border - raised with body
       const plateBorderGeometry = new THREE.PlaneGeometry(0.85, 0.3);
       const plateBorderMaterial = new THREE.MeshStandardMaterial({
         color: 0x222222,
         roughness: 0.5
       });
       const plateBorder = new THREE.Mesh(plateBorderGeometry, plateBorderMaterial);
-      plateBorder.position.set(0, 0.45, 2.07);
+      plateBorder.position.set(0, 0.6, 2.07);
       group.add(plateBorder);
 
-      // License plate text (simple dark rectangles to simulate characters)
+      // License plate text (simple dark rectangles to simulate characters) - raised with body
       const charGeometry = new THREE.PlaneGeometry(0.08, 0.12);
       const charMaterial = new THREE.MeshStandardMaterial({
         color: 0x111111,
@@ -346,7 +365,7 @@ export class Vehicle {
       const charPositions = [-0.28, -0.17, -0.06, 0.06, 0.17, 0.28];
       charPositions.forEach(xPos => {
         const char = new THREE.Mesh(charGeometry, charMaterial);
-        char.position.set(xPos, 0.45, 2.09);
+        char.position.set(xPos, 0.6, 2.09);
         group.add(char);
       });
     }
@@ -387,6 +406,13 @@ export class Vehicle {
         } else if (child.userData.isBrakeLight) {
           (child.material as THREE.MeshStandardMaterial).emissive = brakeLightEmissive;
         }
+      } else if (child instanceof THREE.Group && child.userData.isWheelGroup) {
+        // Traverse into wheel groups to find the rim with isWheel marker
+        child.children.forEach(wheelPart => {
+          if (wheelPart instanceof THREE.Mesh && wheelPart.userData.isWheel) {
+            (wheelPart.material as THREE.MeshStandardMaterial).emissive = wheelEmissiveColor;
+          }
+        });
       }
     });
   }

@@ -411,14 +411,15 @@ class SafeDistanceSimulator {
     this.rearCar = new THREE.Group();
 
     // Car body (red color for visibility) - REFLECTIVE
-    const bodyGeometry = new THREE.BoxGeometry(2, 1, 4);
+    // Raised so it sits on wheels (wheel center at y=0.4, radius 0.4)
+    const bodyGeometry = new THREE.BoxGeometry(2, 0.8, 4);
     const bodyMaterial = new THREE.MeshStandardMaterial({
       color: 0xcc0000,
       roughness: 0.2,
       metalness: 0.8
     });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    body.position.y = 0.5;
+    body.position.y = 0.8; // Raised: bottom at 0.4, on top of wheels
     this.rearCar.add(body);
 
     // Cabin - REFLECTIVE
@@ -429,7 +430,7 @@ class SafeDistanceSimulator {
       metalness: 0.7
     });
     const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
-    cabin.position.y = 1.4;
+    cabin.position.y = 1.6; // Raised to sit on body
     cabin.position.z = -0.5;
     this.rearCar.add(cabin);
 
@@ -444,7 +445,7 @@ class SafeDistanceSimulator {
       side: THREE.DoubleSide
     });
     const windscreen = new THREE.Mesh(windscreenGeometry, windscreenMaterial);
-    windscreen.position.set(0, 1.4, -1.55);
+    windscreen.position.set(0, 1.6, -1.55); // Raised with body
     windscreen.rotation.x = -0.2; // Slight angle
     this.rearCar.add(windscreen);
 
@@ -459,14 +460,14 @@ class SafeDistanceSimulator {
     // Left headlight - large white rectangle (at local +Z, faces player after 180° rotation)
     const leftHeadlightGeom = new THREE.PlaneGeometry(0.5, 0.3);
     const leftHeadlight = new THREE.Mesh(leftHeadlightGeom, headlightMaterial);
-    leftHeadlight.position.set(-0.65, 0.5, 2.01); // At local +Z (will be front after rotation)
+    leftHeadlight.position.set(-0.65, 0.7, 2.01); // Raised with body
     // No rotation needed - plane faces +Z by default, which after car rotation faces player
     this.rearCar.add(leftHeadlight);
 
     // Right headlight - large white rectangle
     const rightHeadlightGeom = new THREE.PlaneGeometry(0.5, 0.3);
     const rightHeadlight = new THREE.Mesh(rightHeadlightGeom, headlightMaterial);
-    rightHeadlight.position.set(0.65, 0.5, 2.01); // At local +Z (will be front after rotation)
+    rightHeadlight.position.set(0.65, 0.7, 2.01); // Raised with body
     this.rearCar.add(rightHeadlight);
 
     // Inner headlight pair (dual headlight look)
@@ -479,44 +480,56 @@ class SafeDistanceSimulator {
       new THREE.PlaneGeometry(0.3, 0.25),
       innerHeadlightMaterial
     );
-    leftInnerHeadlight.position.set(-0.25, 0.5, 2.01);
+    leftInnerHeadlight.position.set(-0.25, 0.7, 2.01); // Raised with body
     this.rearCar.add(leftInnerHeadlight);
 
     const rightInnerHeadlight = new THREE.Mesh(
       new THREE.PlaneGeometry(0.3, 0.25),
       innerHeadlightMaterial
     );
-    rightInnerHeadlight.position.set(0.25, 0.5, 2.01);
+    rightInnerHeadlight.position.set(0.25, 0.7, 2.01); // Raised with body
     this.rearCar.add(rightInnerHeadlight);
 
     // Point lights for headlight glow effect (at local +Z)
     const leftLight = new THREE.PointLight(0xffffee, 3, 25);
-    leftLight.position.set(-0.5, 0.6, 2.5);
+    leftLight.position.set(-0.5, 0.8, 2.5); // Raised with body
     this.rearCar.add(leftLight);
 
     const rightLight = new THREE.PointLight(0xffffee, 3, 25);
-    rightLight.position.set(0.5, 0.6, 2.5);
+    rightLight.position.set(0.5, 0.8, 2.5); // Raised with body
     this.rearCar.add(rightLight);
 
-    // Wheels
-    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
-    const wheelMaterial = new THREE.MeshStandardMaterial({
-      color: 0x222222,
-      roughness: 0.8
-    });
-
-    const wheelPositions = [
-      [-0.9, 0.4, 1.2],
-      [0.9, 0.4, 1.2],
-      [-0.9, 0.4, -1.2],
-      [0.9, 0.4, -1.2]
+    // Wheels with tire and rim
+    const rearWheelPositions = [
+      { pos: [-0.9, 0.4, 1.2], side: -1 },
+      { pos: [0.9, 0.4, 1.2], side: 1 },
+      { pos: [-0.9, 0.4, -1.2], side: -1 },
+      { pos: [0.9, 0.4, -1.2], side: 1 }
     ];
 
-    wheelPositions.forEach(pos => {
-      const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(pos[0], pos[1], pos[2]);
-      this.rearCar.add(wheel);
+    rearWheelPositions.forEach(({ pos, side }) => {
+      // Tire (black cylinder)
+      const tireGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+      const tireMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1a1a1a,
+        roughness: 0.9
+      });
+      const tire = new THREE.Mesh(tireGeometry, tireMaterial);
+      tire.rotation.z = Math.PI / 2;
+      tire.position.set(pos[0], pos[1], pos[2]);
+      this.rearCar.add(tire);
+
+      // Silver rim (visible hubcap)
+      const rimGeometry = new THREE.CylinderGeometry(0.22, 0.22, 0.32, 16);
+      const rimMaterial = new THREE.MeshStandardMaterial({
+        color: 0xaaaaaa,
+        roughness: 0.3,
+        metalness: 0.8
+      });
+      const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+      rim.rotation.z = Math.PI / 2;
+      rim.position.set(pos[0] + side * 0.02, pos[1], pos[2]);
+      this.rearCar.add(rim);
     });
 
     // Grille
@@ -526,7 +539,7 @@ class SafeDistanceSimulator {
       roughness: 0.3
     });
     const grille = new THREE.Mesh(grilleGeometry, grilleMaterial);
-    grille.position.set(0, 0.4, -2.01);
+    grille.position.set(0, 0.6, -2.01); // Raised with body
     this.rearCar.add(grille);
 
     // Position rear car behind player and rotate to face player
@@ -739,14 +752,15 @@ class SafeDistanceSimulator {
     const bodyColor = carColors[Math.floor(Math.random() * carColors.length)];
 
     // Car body
-    const bodyGeometry = new THREE.BoxGeometry(2, 1, 4);
+    // Body - raised to sit on wheels
+    const bodyGeometry = new THREE.BoxGeometry(2, 0.8, 4);
     const bodyMaterial = new THREE.MeshStandardMaterial({
       color: bodyColor,
       roughness: 0.3,
       metalness: 0.7
     });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    body.position.y = 0.5;
+    body.position.y = 0.8; // Raised: bottom at 0.4, on top of wheels
     car.add(body);
 
     // Cabin
@@ -757,7 +771,7 @@ class SafeDistanceSimulator {
       metalness: 0.6
     });
     const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
-    cabin.position.y = 1.4;
+    cabin.position.y = 1.6; // Raised to sit on body
     cabin.position.z = -0.5;
     car.add(cabin);
 
@@ -772,7 +786,7 @@ class SafeDistanceSimulator {
       side: THREE.DoubleSide
     });
     const windscreen = new THREE.Mesh(windscreenGeometry, windscreenMaterial);
-    windscreen.position.set(0, 1.4, -1.55);
+    windscreen.position.set(0, 1.6, -1.55); // Raised with body
     windscreen.rotation.x = -0.2;
     car.add(windscreen);
 
@@ -786,44 +800,56 @@ class SafeDistanceSimulator {
       new THREE.PlaneGeometry(0.5, 0.3),
       headlightMaterial
     );
-    leftHeadlight.position.set(-0.65, 0.5, -2.01);
+    leftHeadlight.position.set(-0.65, 0.7, -2.01); // Raised with body
     car.add(leftHeadlight);
 
     const rightHeadlight = new THREE.Mesh(
       new THREE.PlaneGeometry(0.5, 0.3),
       headlightMaterial
     );
-    rightHeadlight.position.set(0.65, 0.5, -2.01);
+    rightHeadlight.position.set(0.65, 0.7, -2.01); // Raised with body
     car.add(rightHeadlight);
 
     // Point lights for headlight glow
     const leftLight = new THREE.PointLight(0xffffee, 2, 20);
-    leftLight.position.set(-0.5, 0.6, -2.5);
+    leftLight.position.set(-0.5, 0.8, -2.5); // Raised with body
     car.add(leftLight);
 
     const rightLight = new THREE.PointLight(0xffffee, 2, 20);
-    rightLight.position.set(0.5, 0.6, -2.5);
+    rightLight.position.set(0.5, 0.8, -2.5); // Raised with body
     car.add(rightLight);
 
-    // Wheels
-    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
-    const wheelMaterial = new THREE.MeshStandardMaterial({
-      color: 0x222222,
-      roughness: 0.8
-    });
-
-    const wheelPositions = [
-      [-0.9, 0.4, 1.2],
-      [0.9, 0.4, 1.2],
-      [-0.9, 0.4, -1.2],
-      [0.9, 0.4, -1.2]
+    // Wheels with tire and rim
+    const oncomingWheelPositions = [
+      { pos: [-0.9, 0.4, 1.2], side: -1 },
+      { pos: [0.9, 0.4, 1.2], side: 1 },
+      { pos: [-0.9, 0.4, -1.2], side: -1 },
+      { pos: [0.9, 0.4, -1.2], side: 1 }
     ];
 
-    wheelPositions.forEach(pos => {
-      const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(pos[0], pos[1], pos[2]);
-      car.add(wheel);
+    oncomingWheelPositions.forEach(({ pos, side }) => {
+      // Tire (black cylinder)
+      const tireGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+      const tireMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1a1a1a,
+        roughness: 0.9
+      });
+      const tire = new THREE.Mesh(tireGeometry, tireMaterial);
+      tire.rotation.z = Math.PI / 2;
+      tire.position.set(pos[0], pos[1], pos[2]);
+      car.add(tire);
+
+      // Silver rim (visible hubcap)
+      const rimGeometry = new THREE.CylinderGeometry(0.22, 0.22, 0.32, 16);
+      const rimMaterial = new THREE.MeshStandardMaterial({
+        color: 0xaaaaaa,
+        roughness: 0.3,
+        metalness: 0.8
+      });
+      const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+      rim.rotation.z = Math.PI / 2;
+      rim.position.set(pos[0] + side * 0.02, pos[1], pos[2]);
+      car.add(rim);
     });
 
     // Position in left lane and rotate to face player (front toward positive Z)
