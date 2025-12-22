@@ -93,14 +93,14 @@ export class Vehicle {
         metalness: 0.8
       });
 
-      // LEFT SIDE MIRROR - slim and sleek
-      const leftMirrorFrame = new THREE.BoxGeometry(0.38, 0.08, 0.015);
+      // LEFT SIDE MIRROR - slim depth
+      const leftMirrorFrame = new THREE.BoxGeometry(0.40, 0.14, 0.02);
       const leftMirror = new THREE.Mesh(leftMirrorFrame, mirrorFrameMaterial);
       leftMirror.position.set(-0.86, 1.05, -0.25);
       group.add(leftMirror);
 
       // Left mirror surface with UV offset for center-magnify effect
-      const leftMirrorGeom = new THREE.PlaneGeometry(0.34, 0.06);
+      const leftMirrorGeom = new THREE.PlaneGeometry(0.36, 0.11);
       // Modify UVs to show center portion of texture (magnify center/road area)
       const leftUVs = leftMirrorGeom.attributes.uv;
       for (let i = 0; i < leftUVs.count; i++) {
@@ -124,7 +124,7 @@ export class Vehicle {
       group.add(rightMirror);
 
       // Right mirror surface with UV offset for center-magnify effect
-      const rightMirrorGeom = new THREE.PlaneGeometry(0.34, 0.06);
+      const rightMirrorGeom = new THREE.PlaneGeometry(0.36, 0.11);
       // Modify UVs to show center portion of texture (magnify center/road area)
       const rightUVs = rightMirrorGeom.attributes.uv;
       for (let i = 0; i < rightUVs.count; i++) {
@@ -142,15 +142,15 @@ export class Vehicle {
       rightMirrorSurface.userData.mirrorType = 'right';
       group.add(rightMirrorSurface);
 
-      // CENTER REARVIEW MIRROR - slim profile
-      const centerMirrorFrame = new THREE.BoxGeometry(0.68, 0.12, 0.015);
+      // CENTER REARVIEW MIRROR - slim depth
+      const centerMirrorFrame = new THREE.BoxGeometry(0.7, 0.25, 0.02);
       const centerMirror = new THREE.Mesh(centerMirrorFrame, mirrorFrameMaterial);
       centerMirror.position.set(0, 1.5, -0.4);
       group.add(centerMirror);
 
-      // Center mirror surface - slim, facing backward
+      // Center mirror surface - facing backward
       const centerMirrorSurface = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.64, 0.09),
+        new THREE.PlaneGeometry(0.65, 0.20),
         new THREE.MeshBasicMaterial({ color: 0x333344, side: THREE.DoubleSide })
       );
       centerMirrorSurface.position.set(0, 1.5, -0.38);
