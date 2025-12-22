@@ -737,3 +737,140 @@ body {
   padding: 40px;
   font-style: italic;
 }
+
+/* Mobile Touch Controls */
+.mobile-controls {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 200px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 40px;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.mobile-controls.hidden {
+  display: none;
+}
+
+.touch-btn {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  font-size: 20px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  cursor: pointer;
+  pointer-events: all;
+  transition: transform 0.1s, box-shadow 0.1s;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.brake-btn {
+  background: linear-gradient(145deg, #ff4444, #cc0000);
+  color: #fff;
+  box-shadow: 0 8px 25px rgba(255, 0, 0, 0.5), inset 0 -4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.brake-btn:active,
+.brake-btn.active {
+  transform: scale(0.95);
+  box-shadow: 0 4px 15px rgba(255, 0, 0, 0.6), inset 0 4px 10px rgba(0, 0, 0, 0.4);
+  background: linear-gradient(145deg, #cc0000, #990000);
+}
+
+.accel-btn {
+  background: linear-gradient(145deg, #4488ff, #0044cc);
+  color: #fff;
+  box-shadow: 0 8px 25px rgba(0, 100, 255, 0.5), inset 0 -4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.accel-btn:active,
+.accel-btn.active {
+  transform: scale(0.95);
+  box-shadow: 0 4px 15px rgba(0, 100, 255, 0.6), inset 0 4px 10px rgba(0, 0, 0, 0.4);
+  background: linear-gradient(145deg, #0044cc, #003399);
+}
+
+/* Mobile start overlay button indicators */
+.btn-indicator {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.btn-indicator.accel {
+  background: linear-gradient(145deg, #4488ff, #0044cc);
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(0, 100, 255, 0.4);
+}
+
+.btn-indicator.brake {
+  background: linear-gradient(145deg, #ff4444, #cc0000);
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(255, 0, 0, 0.4);
+}
+
+/* Hide mobile instructions by default */
+.mobile-instructions {
+  display: none;
+}
+
+.mobile-instructions.hidden {
+  display: none;
+}
+
+/* When on mobile, show mobile instructions and hide desktop */
+.mobile-mode .desktop-instructions {
+  display: none;
+}
+
+.mobile-mode .mobile-instructions {
+  display: block;
+}
+
+/* Adjust speedometer on mobile to not overlap with controls */
+@media (max-width: 768px), (pointer: coarse) {
+  .speedometer {
+    bottom: 220px;
+    right: 50%;
+    transform: translateX(50%);
+    width: 150px;
+    height: 150px;
+  }
+
+  .touch-btn {
+    width: 100px;
+    height: 100px;
+    font-size: 16px;
+  }
+
+  .mobile-controls {
+    padding: 20px 30px;
+    height: 160px;
+  }
+
+  .game-start-overlay h1 {
+    font-size: 32px;
+    margin-bottom: 40px;
+  }
+
+  .start-instructions {
+    padding: 30px 40px;
+  }
+
+  .start-instructions p {
+    font-size: 18px;
+    margin: 15px 0;
+  }
+}
