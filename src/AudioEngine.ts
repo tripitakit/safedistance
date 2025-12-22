@@ -16,6 +16,12 @@ export class AudioEngine {
   private isInitialized: boolean = false;
   private isEngineRunning: boolean = false;
 
+  // Brake sound nodes
+  private brakeNoiseSource: AudioBufferSourceNode | null = null;
+  private brakeFilter: BiquadFilterNode | null = null;
+  private brakeGain: GainNode | null = null;
+  private isBrakeSoundPlaying: boolean = false;
+
   // Gear ratios for RPM calculation (simplified 5-speed)
   private readonly GEAR_RATIOS = [3.5, 2.2, 1.5, 1.0, 0.75];
   private readonly FINAL_DRIVE = 3.5;
@@ -195,6 +201,98 @@ export class AudioEngine {
     const loadVolume = acceleration * 0.05;
     const volume = baseVolume + loadVolume;
     this.engineGain.gain.setTargetAtTime(volume, now, transitionTime);
+  }
+
+  /**
+   * Start or update brake screech sound
+   * @param intensity - braking power 0-1
+   * @param speedKmh - current vehicle speed
+   */
+  public updateBrakeSound(intensity: number, speedKmh: number): void {
+    if (!this.isInitialized || !this.audioContext || !this.masterGain) return;
+
+    // Only play brake sound when braking hard (>30%) and moving
+    const shouldPlay = intensity > 0.3 && speedKmh > 10;
+
+    if (shouldPlay && !this.isBrakeSoundPlaying) {
+      this.startBrakeSound();
+    } else if (!shouldPlay && this.isBrakeSoundPlaying) {
+      this.stopBrakeSound();
+    }
+
+    // Update brake sound parameters
+    if (this.isBrakeSoundPlaying && this.brakeGain && this.brakeFilter) {
+      const now = this.audioContext.currentTime;
+
+      // Volume based on intensity and speed
+      const speedFactor = Math.min(1, speedKmh / 100);
+      const volume = (intensity - 0.3) * 0.7 * speedFactor * 0.15;
+      this.brakeGain.gain.setTargetAtTime(volume, now, 0.05);
+
+      // Higher pitch at higher speeds
+      const baseFreq = 800 + speedKmh * 10;
+      this.brakeFilter.frequency.setTargetAtTime(baseFreq, now, 0.05);
+    }
+  }
+
+  private startBrakeSound(): void {
+    if (!this.audioContext || !this.masterGain || this.isBrakeSoundPlaying) return;
+
+    const now = this.audioContext.currentTime;
+
+    // Create long noise buffer for continuous sound
+    const noiseBuffer = this.createNoiseBuffer(10);
+    this.brakeNoiseSource = this.audioContext.createBufferSource();
+    this.brakeNoiseSource.buffer = noiseBuffer;
+    this.brakeNoiseSource.loop = true;
+
+    // Band-pass filter for tire screech character
+    this.brakeFilter = this.audioContext.createBiquadFilter();
+    this.brakeFilter.type = 'bandpass';
+    this.brakeFilter.frequency.value = 1500;
+    this.brakeFilter.Q.value = 3;
+
+    // Gain control
+    this.brakeGain = this.audioContext.createGain();
+    this.brakeGain.gain.setValueAtTime(0, now);
+
+    // Connect: noise -> filter -> gain -> master
+    this.brakeNoiseSource.connect(this.brakeFilter);
+    this.brakeFilter.connect(this.brakeGain);
+    this.brakeGain.connect(this.masterGain);
+
+    this.brakeNoiseSource.start(now);
+    this.isBrakeSoundPlaying = true;
+  }
+
+  private stopBrakeSound(): void {
+    if (!this.audioContext) return;
+
+    const now = this.audioContext.currentTime;
+
+    // Fade out
+    if (this.brakeGain) {
+      this.brakeGain.gain.setTargetAtTime(0, now, 0.05);
+    }
+
+    // Stop after fade
+    setTimeout(() => {
+      if (this.brakeNoiseSource) {
+        this.brakeNoiseSource.stop();
+        this.brakeNoiseSource.disconnect();
+        this.brakeNoiseSource = null;
+      }
+      if (this.brakeFilter) {
+        this.brakeFilter.disconnect();
+        this.brakeFilter = null;
+      }
+      if (this.brakeGain) {
+        this.brakeGain.disconnect();
+        this.brakeGain = null;
+      }
+    }, 100);
+
+    this.isBrakeSoundPlaying = false;
   }
 
   /**

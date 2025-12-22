@@ -80,7 +80,7 @@ class SafeDistanceSimulator {
   private rearCamera!: THREE.PerspectiveCamera;
   private mirrorRenderTarget!: THREE.WebGLRenderTarget;
   private rearCarDistance: number = 12; // Base distance behind player
-  private rearCarTargetDistance: number = 10; // Following distance (6-18m range)
+  private rearCarTargetDistance: number = 7; // Following distance (4-10m range) - aggressive
   private rearCarVelocity: number = 0; // m/s - rear car has its own velocity
   private rearCarPosition: number = 0; // Absolute position of rear car
 
@@ -537,10 +537,10 @@ class SafeDistanceSimulator {
       this.rearCarVelocity = playerSpeedMs;
     }
 
-    // Moderate tailgating - follows at 6-18m
+    // Aggressive tailgating - follows at 4-10m (closer than before)
     if (Math.random() < 0.02) {
-      const minDistance = Math.max(6, 10 - playerSpeed / 30); // Minimum 6m at high speed
-      const maxDistance = Math.max(18, 22 - playerSpeed / 20);
+      const minDistance = Math.max(4, 6 - playerSpeed / 40); // Minimum 4m at high speed
+      const maxDistance = Math.max(10, 14 - playerSpeed / 25);
       this.rearCarTargetDistance = minDistance + Math.random() * (maxDistance - minDistance);
     }
 
@@ -550,18 +550,18 @@ class SafeDistanceSimulator {
     // Rear car AI: accelerate/brake based on distance to player
     const distanceError = currentDistance - this.rearCarTargetDistance;
 
-    // Normal driver - reasonable reactions
+    // Aggressive driver - fast acceleration, slow to brake
     let targetAcceleration = 0;
-    if (distanceError > 3) {
-      // Too far behind - accelerate to catch up
-      targetAcceleration = Math.min(5, distanceError * 1.0); // m/s²
-    } else if (distanceError < -0.5) {
-      // Getting too close - brake (slightly delayed reaction)
-      targetAcceleration = Math.max(-8, distanceError * 3); // Moderate reaction
+    if (distanceError > 2) {
+      // Too far behind - accelerate aggressively to catch up
+      targetAcceleration = Math.min(7, distanceError * 1.5); // m/s² - faster catch up
+    } else if (distanceError < -0.3) {
+      // Getting too close - brake but with delayed/weak reaction
+      targetAcceleration = Math.max(-5, distanceError * 2); // Weaker braking
     } else {
-      // Match player speed
+      // Match player speed but tends to go slightly faster
       const speedDiff = playerSpeedMs - this.rearCarVelocity;
-      targetAcceleration = speedDiff * 2.5;
+      targetAcceleration = speedDiff * 3 + 0.5; // Slight bias to speed up
     }
 
     // Update rear car velocity with physics
@@ -1785,7 +1785,9 @@ class SafeDistanceSimulator {
     if (this.gameStarted && !this.isGameOver) {
       const speedKmh = this.playerVehicle.getVelocityKmh();
       const accelInput = this.inputController.getAccelerationInput();
+      const brakeInput = this.inputController.getBrakingInput();
       this.audioEngine.updateEngine(speedKmh, accelInput);
+      this.audioEngine.updateBrakeSound(brakeInput, speedKmh);
     }
 
     // Update lead vehicle AI (unless crashing)
