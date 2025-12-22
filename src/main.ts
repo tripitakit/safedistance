@@ -55,6 +55,12 @@ class SafeDistanceSimulator {
   private viewHighScoresBtn!: HTMLElement;
   private crashFlashElement: HTMLElement;
 
+  // Health Report elements
+  private gForceElement!: HTMLElement;
+  private patientStatusElement!: HTMLElement;
+  private injuriesListElement!: HTMLElement;
+  private prognosisElement!: HTMLElement;
+
   // High score elements
   private highScoreNameInputElement!: HTMLElement;
   private newHighScoreElement!: HTMLElement;
@@ -129,6 +135,12 @@ class SafeDistanceSimulator {
     this.restartBtn = document.getElementById('restartBtn')!;
     this.viewHighScoresBtn = document.getElementById('viewHighScoresBtn')!;
     this.crashFlashElement = document.getElementById('crashFlash')!;
+
+    // Get Health Report elements
+    this.gForceElement = document.getElementById('gForce')!;
+    this.patientStatusElement = document.getElementById('patientStatus')!;
+    this.injuriesListElement = document.getElementById('injuriesList')!;
+    this.prognosisElement = document.getElementById('prognosis')!;
 
     // Get High Score elements
     this.highScoreNameInputElement = document.getElementById('highScoreNameInput')!;
@@ -1747,6 +1759,9 @@ class SafeDistanceSimulator {
     this.finalKmElement.textContent = `${kmDriven.toFixed(2)} km`;
     this.finalScoreElement.textContent = `${Math.round(this.score)} pts`;
 
+    // Calculate and display Health Report
+    this.updateHealthReport(speedDiffKmh);
+
     // Wait 2 seconds for crash animation, then show game over screen
     setTimeout(async () => {
       this.isGameOver = true;
@@ -1756,6 +1771,125 @@ class SafeDistanceSimulator {
       // Check if this is a high score
       await this.checkAndShowHighScoreInput();
     }, 2000);
+  }
+
+  /**
+   * Calculate and display the First Aid Health Report based on G-forces
+   * G-force ranges:
+   * - 20-50 g: serious but survivable accidents
+   * - 50-80 g: survival limit with optimal protection (seatbelt, airbag)
+   * - 100+ g: generally fatal
+   * - 255+ g: catastrophic damage certain
+   */
+  private updateHealthReport(speedDiffKmh: number): void {
+    // Calculate G-force: G = (ΔV / Δt) / 9.81
+    const deltaV = speedDiffKmh / 3.6; // Convert to m/s
+    const collisionDuration = 0.1; // seconds (typical car crash)
+    const acceleration = deltaV / collisionDuration;
+    const gForce = acceleration / 9.81;
+
+    // Update G-force display
+    this.gForceElement.textContent = `${gForce.toFixed(1)} g`;
+
+    // Determine patient status and prognosis based on G-force
+    let patientStatus: string;
+    let statusClass: string;
+    let prognosis: string;
+    let prognosisClass: string;
+    const injuries: { text: string; severity: string }[] = [];
+
+    if (gForce < 20) {
+      // Minor impact
+      patientStatus = 'STABLE';
+      statusClass = 'stable';
+      prognosis = 'Full recovery expected';
+      prognosisClass = 'good';
+      injuries.push({ text: 'Minor bruising from seatbelt', severity: 'minor' });
+      injuries.push({ text: 'Possible mild whiplash', severity: 'minor' });
+    } else if (gForce < 50) {
+      // Serious but survivable (20-50 g)
+      patientStatus = 'SERIOUS';
+      statusClass = 'critical';
+      prognosis = 'Recovery with treatment';
+      prognosisClass = 'guarded';
+      injuries.push({ text: 'Whiplash injury (cervical strain)', severity: 'moderate' });
+      injuries.push({ text: 'Chest contusion from seatbelt', severity: 'moderate' });
+      injuries.push({ text: 'Possible rib fractures', severity: 'serious' });
+      injuries.push({ text: 'Mild concussion', severity: 'moderate' });
+      if (gForce > 35) {
+        injuries.push({ text: 'Internal bruising', severity: 'serious' });
+      }
+    } else if (gForce < 80) {
+      // Survival limit with protection (50-80 g)
+      patientStatus = 'CRITICAL';
+      statusClass = 'severe';
+      prognosis = 'Life-threatening - ICU required';
+      prognosisClass = 'poor';
+      injuries.push({ text: 'Severe whiplash / cervical trauma', severity: 'critical' });
+      injuries.push({ text: 'Multiple rib fractures', severity: 'critical' });
+      injuries.push({ text: 'Pulmonary contusion', severity: 'critical' });
+      injuries.push({ text: 'Traumatic brain injury (TBI)', severity: 'critical' });
+      injuries.push({ text: 'Internal hemorrhaging', severity: 'critical' });
+      injuries.push({ text: 'Aortic stress injury', severity: 'critical' });
+    } else if (gForce < 100) {
+      // Beyond survival limit (80-100 g)
+      patientStatus = 'CRITICAL - UNRESPONSIVE';
+      statusClass = 'fatal';
+      prognosis = 'Survival unlikely';
+      prognosisClass = 'critical';
+      injuries.push({ text: 'Severe traumatic brain injury', severity: 'fatal' });
+      injuries.push({ text: 'Cervical spine fracture', severity: 'fatal' });
+      injuries.push({ text: 'Aortic rupture risk', severity: 'fatal' });
+      injuries.push({ text: 'Multiple organ trauma', severity: 'fatal' });
+      injuries.push({ text: 'Flail chest', severity: 'fatal' });
+      injuries.push({ text: 'Massive internal bleeding', severity: 'fatal' });
+    } else if (gForce < 255) {
+      // Fatal (100+ g)
+      patientStatus = 'DECEASED';
+      statusClass = 'fatal';
+      prognosis = 'Fatal injuries sustained';
+      prognosisClass = 'fatal';
+      injuries.push({ text: 'Unsurvivable head trauma', severity: 'fatal' });
+      injuries.push({ text: 'Complete cervical dissociation', severity: 'fatal' });
+      injuries.push({ text: 'Aortic transection', severity: 'fatal' });
+      injuries.push({ text: 'Massive polytrauma', severity: 'fatal' });
+      injuries.push({ text: 'Complete organ failure', severity: 'fatal' });
+    } else {
+      // Catastrophic (255+ g)
+      patientStatus = 'DECEASED';
+      statusClass = 'fatal';
+      prognosis = 'Catastrophic - Non-survivable';
+      prognosisClass = 'fatal';
+      injuries.push({ text: 'Catastrophic total body trauma', severity: 'fatal' });
+      injuries.push({ text: 'Complete structural failure', severity: 'fatal' });
+      injuries.push({ text: 'Instant fatality', severity: 'fatal' });
+    }
+
+    // Update patient status
+    this.patientStatusElement.textContent = patientStatus;
+    this.patientStatusElement.className = `stat-value patient-status ${statusClass}`;
+
+    // Update injuries list
+    this.injuriesListElement.innerHTML = injuries
+      .map(injury => `<li class="${injury.severity}">${injury.text}</li>`)
+      .join('');
+
+    // Update prognosis
+    this.prognosisElement.textContent = prognosis;
+    this.prognosisElement.className = `stat-value prognosis-value ${prognosisClass}`;
+
+    // Color the G-force based on severity
+    if (gForce < 20) {
+      this.gForceElement.style.color = '#00ff00';
+    } else if (gForce < 50) {
+      this.gForceElement.style.color = '#ffff00';
+    } else if (gForce < 80) {
+      this.gForceElement.style.color = '#ff9900';
+    } else if (gForce < 100) {
+      this.gForceElement.style.color = '#ff6600';
+    } else {
+      this.gForceElement.style.color = '#ff0000';
+    }
   }
 
   private restart(): void {

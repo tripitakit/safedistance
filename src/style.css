@@ -404,6 +404,101 @@ body {
   text-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
 }
 
+/* Health Report Styles */
+.health-report {
+  margin-top: 20px;
+  padding: 15px;
+  background: linear-gradient(135deg, rgba(0, 80, 0, 0.3) 0%, rgba(0, 40, 0, 0.5) 100%);
+  border: 2px solid #00ff00;
+  border-radius: 10px;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+}
+
+.health-report h2 {
+  color: #00ff00;
+  font-size: 18px;
+  margin-bottom: 15px;
+  text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+  border-bottom: 1px solid rgba(0, 255, 0, 0.3);
+  padding-bottom: 8px;
+}
+
+.gforce-row {
+  margin-bottom: 10px;
+}
+
+.gforce-value {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.patient-status {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.patient-status.stable { color: #00ff00; }
+.patient-status.critical { color: #ffaa00; }
+.patient-status.severe { color: #ff6600; }
+.patient-status.fatal { color: #ff0000; text-shadow: 0 0 10px rgba(255, 0, 0, 0.8); }
+
+.injuries-section {
+  margin: 15px 0;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 5px;
+}
+
+.injuries-section .stat-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #ff9900;
+}
+
+.injuries-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 14px;
+  color: #ffcccc;
+}
+
+.injuries-list li {
+  padding: 4px 0;
+  padding-left: 15px;
+  position: relative;
+}
+
+.injuries-list li::before {
+  content: "▸";
+  position: absolute;
+  left: 0;
+  color: #ff6600;
+}
+
+.injuries-list li.minor { color: #aaffaa; }
+.injuries-list li.moderate { color: #ffff00; }
+.injuries-list li.serious { color: #ff9900; }
+.injuries-list li.critical { color: #ff6600; }
+.injuries-list li.fatal { color: #ff0000; font-weight: bold; }
+
+.prognosis-row {
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 255, 0, 0.3);
+}
+
+.prognosis-value {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.prognosis-value.good { color: #00ff00; }
+.prognosis-value.guarded { color: #ffff00; }
+.prognosis-value.poor { color: #ff9900; }
+.prognosis-value.critical { color: #ff6600; }
+.prognosis-value.fatal { color: #ff0000; text-shadow: 0 0 10px rgba(255, 0, 0, 0.8); }
+
 .restart-btn {
   width: 100%;
   padding: 20px;
