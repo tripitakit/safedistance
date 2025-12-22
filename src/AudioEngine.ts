@@ -19,6 +19,7 @@ export class AudioEngine {
   // Brake sound nodes
   private brakeNoiseSource: AudioBufferSourceNode | null = null;
   private brakeFilter: BiquadFilterNode | null = null;
+  private brakeFilter2: BiquadFilterNode | null = null; // Second resonant peak for screech
   private brakeGain: GainNode | null = null;
   private isBrakeSoundPlaying: boolean = false;
 
@@ -211,8 +212,8 @@ export class AudioEngine {
   public updateBrakeSound(intensity: number, speedKmh: number): void {
     if (!this.isInitialized || !this.audioContext || !this.masterGain) return;
 
-    // Only play brake sound when braking hard (>30%) and moving
-    const shouldPlay = intensity > 0.3 && speedKmh > 10;
+    // Play brake sound when braking (>15%) and moving (>5 km/h)
+    const shouldPlay = intensity > 0.15 && speedKmh > 5;
 
     if (shouldPlay && !this.isBrakeSoundPlaying) {
       this.startBrakeSound();
@@ -221,21 +222,28 @@ export class AudioEngine {
     }
 
     // Update brake sound parameters
-    if (this.isBrakeSoundPlaying && this.brakeGain && this.brakeFilter) {
+    if (this.isBrakeSoundPlaying && this.brakeGain && this.brakeFilter && this.brakeFilter2) {
       const now = this.audioContext.currentTime;
 
       // Volume based on intensity and speed
-      const speedFactor = Math.min(1, speedKmh / 100);
-      const volume = (intensity - 0.3) * 0.7 * speedFactor * 0.2;
+      const speedFactor = Math.min(1, speedKmh / 80);
+      const intensityFactor = Math.pow(intensity, 0.6);
+      const volume = intensityFactor * speedFactor * 0.7;
       this.brakeGain.gain.setTargetAtTime(volume, now, 0.05);
 
-      // High squeaky pitch - tires on smooth surface
-      const baseFreq = 2500 + speedKmh * 20 + Math.sin(now * 30) * 200;
-      this.brakeFilter.frequency.setTargetAtTime(baseFreq, now, 0.02);
+      // Main screech frequency - higher pitch, more variation for screechy sound
+      const wobble1 = Math.sin(now * 45) * 400; // Fast wobble for screech character
+      const wobble2 = Math.sin(now * 12) * 200; // Slower variation
+      const baseFreq = 3000 + speedKmh * 30 + wobble1 + wobble2;
+      this.brakeFilter.frequency.setTargetAtTime(baseFreq, now, 0.01);
 
-      // Vary the Q for more screech variation
-      const qValue = 8 + Math.sin(now * 15) * 3;
-      this.brakeFilter.Q.setTargetAtTime(qValue, now, 0.02);
+      // Very high Q for sharp screechy resonance - varies for realistic sound
+      const qValue = 20 + Math.sin(now * 25) * 8;
+      this.brakeFilter.Q.setTargetAtTime(qValue, now, 0.01);
+
+      // Second filter harmonic - moves independently for complex screech
+      const harmFreq = 4500 + speedKmh * 20 + Math.sin(now * 35) * 500;
+      this.brakeFilter2.frequency.setTargetAtTime(harmFreq, now, 0.01);
     }
   }
 
@@ -250,19 +258,28 @@ export class AudioEngine {
     this.brakeNoiseSource.buffer = noiseBuffer;
     this.brakeNoiseSource.loop = true;
 
-    // High-pass + resonant filter for squeaky tire screech
+    // First filter - high frequency screech (main tire squeal)
     this.brakeFilter = this.audioContext.createBiquadFilter();
     this.brakeFilter.type = 'bandpass';
-    this.brakeFilter.frequency.value = 3000;
-    this.brakeFilter.Q.value = 10;
+    this.brakeFilter.frequency.value = 3500; // Higher frequency for screech
+    this.brakeFilter.Q.value = 25; // Very high Q for sharp resonant screech
 
-    // Gain control
+    // Second filter - adds harmonic complexity for realistic tire sound
+    this.brakeFilter2 = this.audioContext.createBiquadFilter();
+    this.brakeFilter2.type = 'peaking';
+    this.brakeFilter2.frequency.value = 5000; // Upper harmonic
+    this.brakeFilter2.Q.value = 8;
+    this.brakeFilter2.gain.value = 10; // Boost this frequency
+
+    // Gain control - start with quick fade-in
     this.brakeGain = this.audioContext.createGain();
     this.brakeGain.gain.setValueAtTime(0, now);
+    this.brakeGain.gain.linearRampToValueAtTime(0.4, now + 0.03); // Faster attack
 
-    // Connect: noise -> filter -> gain -> master
+    // Connect: noise -> filter1 -> filter2 -> gain -> master
     this.brakeNoiseSource.connect(this.brakeFilter);
-    this.brakeFilter.connect(this.brakeGain);
+    this.brakeFilter.connect(this.brakeFilter2);
+    this.brakeFilter2.connect(this.brakeGain);
     this.brakeGain.connect(this.masterGain);
 
     this.brakeNoiseSource.start(now);
@@ -289,6 +306,10 @@ export class AudioEngine {
       if (this.brakeFilter) {
         this.brakeFilter.disconnect();
         this.brakeFilter = null;
+      }
+      if (this.brakeFilter2) {
+        this.brakeFilter2.disconnect();
+        this.brakeFilter2 = null;
       }
       if (this.brakeGain) {
         this.brakeGain.disconnect();
