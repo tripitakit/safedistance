@@ -86,6 +86,7 @@ export class WeatherSystem {
   private snowPositions: Float32Array | null = null;
   private snowVelocities: Float32Array | null = null;
   private snowDrift: Float32Array | null = null; // Horizontal drift per particle
+  private snowColors: Float32Array | null = null; // For headlight reflection effect
 
   private currentWeather: WeatherState = 'clear';
   private targetWeather: WeatherState = 'clear';
@@ -111,8 +112,8 @@ export class WeatherSystem {
   // Time-of-day darkness factor (0 = bright day, 1 = full night)
   private timeDarkness: number = 0;
 
-  // Headlight state for rain reflections
-  private headlightsOn: boolean = false;
+  // Headlight state for rain/snow reflections (always on)
+  private headlightsOn: boolean = true;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -173,6 +174,7 @@ export class WeatherSystem {
     this.snowPositions = new Float32Array(this.SNOW_COUNT * 3);
     this.snowVelocities = new Float32Array(this.SNOW_COUNT);
     this.snowDrift = new Float32Array(this.SNOW_COUNT * 2); // X and Z drift per particle
+    this.snowColors = new Float32Array(this.SNOW_COUNT * 3); // RGB per particle
 
     // Initialize snow particles
     for (let i = 0; i < this.SNOW_COUNT; i++) {
@@ -183,17 +185,23 @@ export class WeatherSystem {
       // Random drift direction per snowflake
       this.snowDrift[i * 2] = (Math.random() - 0.5) * 2; // X drift
       this.snowDrift[i * 2 + 1] = (Math.random() - 0.5) * 2; // Z drift
+
+      // Default snow color (white)
+      this.snowColors[i * 3] = 0.9;     // R
+      this.snowColors[i * 3 + 1] = 0.9; // G
+      this.snowColors[i * 3 + 2] = 1.0; // B (slightly blue-white)
     }
 
     this.snowGeometry.setAttribute('position', new THREE.BufferAttribute(this.snowPositions, 3));
+    this.snowGeometry.setAttribute('color', new THREE.BufferAttribute(this.snowColors, 3));
 
     const snowMaterial = new THREE.PointsMaterial({
-      color: 0xffffff,
       size: 0.25, // Larger than rain
       transparent: true,
       opacity: 0.8,
       sizeAttenuation: true,
       depthWrite: false,
+      vertexColors: true, // Enable per-particle colors for headlight reflections
     });
 
     this.snowParticles = new THREE.Points(this.snowGeometry, snowMaterial);
@@ -514,7 +522,7 @@ export class WeatherSystem {
   }
 
   private updateSnow(deltaTime: number): void {
-    if (!this.snowParticles || !this.snowPositions || !this.snowVelocities || !this.snowDrift) return;
+    if (!this.snowParticles || !this.snowPositions || !this.snowVelocities || !this.snowDrift || !this.snowColors) return;
 
     const currentConfig = WEATHER_CONFIGS[this.currentWeather];
     const targetConfig = WEATHER_CONFIGS[this.targetWeather];
@@ -541,6 +549,12 @@ export class WeatherSystem {
     // Snow is lighter so it rushes slightly faster than rain appears to
     const speedRushFactor = this.playerSpeed * 0.9;
 
+    // Headlight beam parameters (in local particle space)
+    const beamMaxZ = 5;     // How far behind player beam is still visible
+    const beamMinZ = -35;   // How far ahead of player beam reaches
+    const beamMaxX = 8;     // Width of beam
+    const beamMaxY = 6;     // Height of beam
+
     // Animate snow falling with gentle drift
     for (let i = 0; i < this.SNOW_COUNT; i++) {
       // Only animate a portion based on intensity
@@ -548,6 +562,10 @@ export class WeatherSystem {
         this.snowPositions[i * 3 + 1] = -100; // Hide excess particles
         continue;
       }
+
+      const x = this.snowPositions[i * 3];
+      const y = this.snowPositions[i * 3 + 1];
+      const z = this.snowPositions[i * 3 + 2];
 
       // Move snow down (slower than rain)
       this.snowPositions[i * 3 + 1] -= this.snowVelocities[i] * deltaTime;
@@ -560,6 +578,37 @@ export class WeatherSystem {
       // Combined with natural drift for more chaotic blizzard feel
       const driftZ = this.snowDrift[i * 2 + 1];
       this.snowPositions[i * 3 + 2] += speedRushFactor * deltaTime + driftZ * deltaTime;
+
+      // Headlight reflection effect
+      if (this.headlightsOn) {
+        // Check if particle is in headlight beam area
+        const inBeamZ = z > beamMinZ && z < beamMaxZ;
+        const inBeamX = Math.abs(x) < beamMaxX;
+        const inBeamY = y > 0 && y < beamMaxY;
+
+        if (inBeamZ && inBeamX && inBeamY) {
+          // Calculate intensity based on position in beam (brighter near center)
+          const zFactor = 1 - Math.abs(z - beamMinZ / 2) / (-beamMinZ);
+          const xFactor = 1 - Math.abs(x) / beamMaxX;
+          const yFactor = 1 - y / beamMaxY;
+          const beamIntensity = zFactor * xFactor * yFactor;
+
+          // Bright white/yellow in headlight beam (snow is already white, so boost it more)
+          this.snowColors[i * 3] = 0.9 + beamIntensity * 0.1;     // R (up to 1.0)
+          this.snowColors[i * 3 + 1] = 0.9 + beamIntensity * 0.1; // G (up to 1.0)
+          this.snowColors[i * 3 + 2] = 1.0;                        // B (stays bright)
+        } else {
+          // Default snow color outside beam (slightly dimmer)
+          this.snowColors[i * 3] = 0.9;
+          this.snowColors[i * 3 + 1] = 0.9;
+          this.snowColors[i * 3 + 2] = 1.0;
+        }
+      } else {
+        // Headlights off - default color
+        this.snowColors[i * 3] = 0.9;
+        this.snowColors[i * 3 + 1] = 0.9;
+        this.snowColors[i * 3 + 2] = 1.0;
+      }
 
       // Reset if below ground OR if rushed past player (behind camera)
       if (this.snowPositions[i * 3 + 1] < 0 || this.snowPositions[i * 3 + 2] > this.PARTICLE_AREA / 2) {
@@ -575,6 +624,7 @@ export class WeatherSystem {
 
     // Mark for GPU update
     this.snowGeometry!.attributes.position.needsUpdate = true;
+    this.snowGeometry!.attributes.color.needsUpdate = true;
   }
 
   /**

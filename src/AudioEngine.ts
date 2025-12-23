@@ -31,8 +31,6 @@ export class AudioEngine {
   private windFilter: BiquadFilterNode | null = null;
   private windGain: GainNode | null = null;
   private isWeatherSoundPlaying: boolean = false;
-  private currentRainIntensity: number = 0;
-  private currentWindIntensity: number = 0;
 
   // Gear ratios for RPM calculation (simplified 5-speed)
   private readonly GEAR_RATIOS = [3.5, 2.2, 1.5, 1.0, 0.75];
@@ -360,8 +358,6 @@ export class AudioEngine {
       this.updateWindSound(totalWindIntensity, speedKmh);
     }
 
-    this.currentRainIntensity = rainIntensity;
-    this.currentWindIntensity = totalWindIntensity;
   }
 
   private startWeatherSound(): void {
