@@ -184,4 +184,18 @@ export class InputController {
     const holdTime = this.spaceKeyPressed ? Date.now() - this.spaceKeyDownTime : 0;
     return `Enter: ${enterPressed} | Space: ${spacePressed} (${holdTime}ms)`;
   }
+
+  /**
+   * Alias for getBrakingInput for consistency
+   */
+  public getBrakeIntensity(): number {
+    return this.getBrakingInput();
+  }
+
+  /**
+   * Check if player is accelerating
+   */
+  public isAccelerating(): boolean {
+    return this.getAccelerationInput() > 0;
+  }
 }

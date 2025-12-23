@@ -16,6 +16,12 @@ export class Vehicle {
   private currentAcceleration: number = 0;
   private currentBraking: number = 0; // 0-1 (0-100%)
 
+  // Weight transfer (visual pitch)
+  private currentPitch: number = 0; // Current pitch angle in radians
+  private targetPitch: number = 0;  // Target pitch angle
+  private readonly MAX_PITCH = 0.03; // Maximum pitch angle (radians, ~1.7 degrees)
+  private readonly PITCH_SPEED = 8;  // How fast pitch changes
+
   constructor(config: VehicleConfig, color: number = 0xff0000) {
     this.config = config;
     this.mesh = this.createMesh(color);
@@ -455,6 +461,32 @@ export class Vehicle {
 
     // Update 3D position
     this.mesh.position.z = -this.position;
+
+    // Update weight transfer (visual pitch)
+    this.updateWeightTransfer(acceleration, deltaTime);
+  }
+
+  private updateWeightTransfer(_acceleration: number, deltaTime: number): void {
+    // Calculate target pitch based on acceleration
+    // Positive acceleration = rear squats (nose up, negative pitch)
+    // Negative acceleration (braking) = front dips (nose down, positive pitch)
+    if (this.currentBraking > 0) {
+      // Braking - front dips (positive pitch)
+      this.targetPitch = this.MAX_PITCH * this.currentBraking;
+    } else if (this.currentAcceleration > 0) {
+      // Accelerating - rear squats (negative pitch)
+      this.targetPitch = -this.MAX_PITCH * this.currentAcceleration * 0.5;
+    } else {
+      // Neutral - return to level
+      this.targetPitch = 0;
+    }
+
+    // Smooth interpolation to target pitch
+    const pitchDiff = this.targetPitch - this.currentPitch;
+    this.currentPitch += pitchDiff * this.PITCH_SPEED * deltaTime;
+
+    // Apply pitch to mesh (rotation around X axis)
+    this.mesh.rotation.x = this.currentPitch;
   }
 
   public getVelocityKmh(): number {

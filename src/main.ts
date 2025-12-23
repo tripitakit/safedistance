@@ -5,6 +5,10 @@ import { LeadVehicleAI } from './LeadVehicleAI';
 import { InputController } from './InputController';
 import { HighScoreManager } from './HighScoreManager';
 import { AudioEngine } from './AudioEngine';
+import { CameraEffects } from './CameraEffects';
+import { ParticleSystem } from './ParticleSystem';
+import { WeatherSystem } from './WeatherSystem';
+import { TimeOfDay } from './TimeOfDay';
 
 class SafeDistanceSimulator {
   private scene: THREE.Scene;
@@ -33,6 +37,11 @@ class SafeDistanceSimulator {
   private speedometerCanvas: HTMLCanvasElement;
   private speedometerCtx: CanvasRenderingContext2D;
   private speedometerBackground: ImageData | null = null;
+
+  // Visual effect overlay elements
+  private vignetteOverlay!: HTMLElement;
+  private tensionOverlay!: HTMLElement;
+  private speedLinesOverlay!: HTMLElement;
 
   // Warning state
   private warningTimeout: number | null = null;
@@ -118,6 +127,20 @@ class SafeDistanceSimulator {
   // Audio engine
   private audioEngine: AudioEngine;
 
+  // Camera effects
+  private cameraEffects!: CameraEffects;
+
+  // Particle system
+  private particleSystem!: ParticleSystem;
+
+  // Weather and time systems
+  private weatherSystem!: WeatherSystem;
+  private timeOfDay!: TimeOfDay;
+
+  // Lighting references (for TimeOfDay control)
+  private sunLight!: THREE.DirectionalLight;
+  private ambientLight!: THREE.AmbientLight;
+
   constructor() {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(
@@ -138,6 +161,11 @@ class SafeDistanceSimulator {
     this.gameStartOverlayElement = document.getElementById('gameStartOverlay')!;
     this.speedometerCanvas = document.getElementById('speedometer') as HTMLCanvasElement;
     this.speedometerCtx = this.speedometerCanvas.getContext('2d')!;
+
+    // Get visual effect overlay elements
+    this.vignetteOverlay = document.getElementById('vignetteOverlay')!;
+    this.tensionOverlay = document.getElementById('tensionOverlay')!;
+    this.speedLinesOverlay = document.getElementById('speedLines')!;
 
     // Get Game Over elements
     this.gameOverElement = document.getElementById('gameOver')!;
@@ -252,6 +280,26 @@ class SafeDistanceSimulator {
 
     // Initialize audio engine (will start on first user input)
     this.audioEngine = new AudioEngine();
+
+    // Initialize camera effects
+    this.cameraEffects = new CameraEffects(this.camera);
+
+    // Initialize particle system
+    this.particleSystem = new ParticleSystem(this.scene, 500);
+
+    // Initialize weather and time of day systems
+    this.weatherSystem = new WeatherSystem(this.scene);
+    this.timeOfDay = new TimeOfDay(this.scene, this.sunLight, this.ambientLight);
+
+    // Add keyboard controls for weather/time cycling (W and T keys)
+    window.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'w' && !this.isGameOver) {
+        this.weatherSystem.cycleWeather();
+      }
+      if (e.key.toLowerCase() === 't' && !this.isGameOver) {
+        this.timeOfDay.cycleTime();
+      }
+    });
 
     this.animate(0);
   }
@@ -724,6 +772,17 @@ class SafeDistanceSimulator {
       this.audioEngine.playCrashSound(totalImpactForceKN, totalSpeedDiff);
       this.audioEngine.stopEngine();
 
+      // Trigger camera shake - sandwich is extra intense
+      this.cameraEffects.triggerShake(0.15);
+
+      // Emit collision particles - both front and rear
+      const frontPos = this.playerVehicle.mesh.position.clone().add(new THREE.Vector3(0, 0.5, -2));
+      const rearPos = this.playerVehicle.mesh.position.clone().add(new THREE.Vector3(0, 0.5, 2));
+      this.particleSystem.emitSparks(frontPos, 1);
+      this.particleSystem.emitSparks(rearPos, 1);
+      this.particleSystem.emitDebris(frontPos, 1);
+      this.particleSystem.emitDebris(rearPos, 1);
+
       // Sandwich crash - show all 3 health reports
       this.showCrashReport(totalImpactForceKN, totalSpeedDiff, playerSpeedKmh, leadSpeedKmh, 'sandwich', rearSpeedDiff, frontSpeedDiff);
     } else {
@@ -740,6 +799,17 @@ class SafeDistanceSimulator {
       // Play crash sound and stop engine
       this.audioEngine.playCrashSound(impactForceKN, speedDiffKmh);
       this.audioEngine.stopEngine();
+
+      // Trigger camera shake based on impact severity
+      const shakeIntensity = Math.min(0.1 + impactForceKN * 0.002, 0.15);
+      this.cameraEffects.triggerShake(shakeIntensity);
+
+      // Emit collision particles - rear impact
+      const rearPos = this.playerVehicle.mesh.position.clone().add(new THREE.Vector3(0, 0.5, 2));
+      this.particleSystem.emitSparks(rearPos, impactForceKN / 50);
+      if (impactForceKN > 30) {
+        this.particleSystem.emitDebris(rearPos, impactForceKN / 100);
+      }
 
       // Rear-end only - show rear car health report, not lead
       this.showCrashReport(impactForceKN, speedDiffKmh, playerSpeedKmh, rearCarSpeedKmh, 'rear', speedDiffKmh, 0);
@@ -1006,20 +1076,20 @@ class SafeDistanceSimulator {
 
   private setupLighting(): void {
     // Ambient light
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    this.scene.add(ambientLight);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    this.scene.add(this.ambientLight);
 
     // Directional light (sun)
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(50, 50, 50);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.camera.left = -50;
-    directionalLight.shadow.camera.right = 50;
-    directionalLight.shadow.camera.top = 50;
-    directionalLight.shadow.camera.bottom = -50;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
-    this.scene.add(directionalLight);
+    this.sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    this.sunLight.position.set(50, 50, 50);
+    this.sunLight.castShadow = true;
+    this.sunLight.shadow.camera.left = -50;
+    this.sunLight.shadow.camera.right = 50;
+    this.sunLight.shadow.camera.top = 50;
+    this.sunLight.shadow.camera.bottom = -50;
+    this.sunLight.shadow.mapSize.width = 2048;
+    this.sunLight.shadow.mapSize.height = 2048;
+    this.scene.add(this.sunLight);
   }
 
   private createRoad(): THREE.Group {
@@ -1581,13 +1651,22 @@ class SafeDistanceSimulator {
     });
   }
 
-  private updateCamera(): void {
+  private updateCamera(deltaTime: number = 0.016): void {
+    // Update camera effects (FOV, shake, head bob)
+    const speed = this.playerVehicle.getVelocityKmh();
+    const brakeIntensity = this.inputController.getBrakeIntensity();
+    const isAccelerating = this.inputController.isAccelerating();
+    this.cameraEffects.update(deltaTime, speed, brakeIntensity, isAccelerating);
+
+    // Get camera effect offsets
+    const effectOffset = this.cameraEffects.getPositionOffset();
+
     // First-person camera: positioned inside the player vehicle
     // Camera moves exactly with the player, at driver's eye level
     this.camera.position.set(
-      this.playerVehicle.mesh.position.x,
-      this.playerVehicle.mesh.position.y + 1.2, // Driver eye height
-      this.playerVehicle.mesh.position.z + 0.5  // Slightly forward in the car
+      this.playerVehicle.mesh.position.x + effectOffset.x,
+      this.playerVehicle.mesh.position.y + 1.2 + effectOffset.y, // Driver eye height + effects
+      this.playerVehicle.mesh.position.z + 0.5 + effectOffset.z  // Slightly forward in the car
     );
 
     // Look straight ahead down the road (negative Z is forward)
@@ -1729,6 +1808,71 @@ class SafeDistanceSimulator {
 
     // Update speedometer gauge
     this.drawSpeedometer(speed);
+
+    // Update visual effects
+    this.updateVisualEffects(speed, distance, safeDistance);
+  }
+
+  private updateParticles(deltaTime: number): void {
+    const speed = this.playerVehicle.getVelocityKmh();
+    const brakeIntensity = this.inputController.getBrakeIntensity();
+    const playerPos = this.playerVehicle.mesh.position;
+
+    // Emit dust at high speeds
+    if (speed > 80 && !this.isCrashing) {
+      // Left wheel dust
+      this.particleSystem.emitDust(
+        playerPos.clone().add(new THREE.Vector3(-0.8, 0, 1)),
+        speed
+      );
+      // Right wheel dust
+      this.particleSystem.emitDust(
+        playerPos.clone().add(new THREE.Vector3(0.8, 0, 1)),
+        speed
+      );
+    }
+
+    // Emit brake spray when braking hard
+    if (brakeIntensity > 0.3 && speed > 20 && !this.isCrashing) {
+      this.particleSystem.emitBrakeSpray(
+        playerPos.clone().add(new THREE.Vector3(0, 0.2, 1.5)),
+        brakeIntensity
+      );
+    }
+
+    // Update particle physics
+    this.particleSystem.update(deltaTime);
+  }
+
+  private updateVisualEffects(speed: number, distance: number, safeDistance: number): void {
+    // Vignette effect - intensifies with speed
+    if (speed > 60) {
+      this.vignetteOverlay.classList.add('active');
+    } else {
+      this.vignetteOverlay.classList.remove('active');
+    }
+
+    // Speed lines - visible at high speed
+    if (speed > 100) {
+      this.speedLinesOverlay.classList.add('active');
+    } else {
+      this.speedLinesOverlay.classList.remove('active');
+    }
+
+    // Tension overlay - based on proximity danger
+    this.tensionOverlay.classList.remove('danger-low', 'danger-medium', 'danger-high');
+
+    if (distance > 0 && distance < safeDistance && !this.isCrashing) {
+      const dangerRatio = 1 - (distance / safeDistance); // 0 = safe, 1 = very close
+
+      if (dangerRatio > 0.7) {
+        this.tensionOverlay.classList.add('danger-high');
+      } else if (dangerRatio > 0.4) {
+        this.tensionOverlay.classList.add('danger-medium');
+      } else if (dangerRatio > 0.1) {
+        this.tensionOverlay.classList.add('danger-low');
+      }
+    }
   }
 
   private drawSpeedometer(speed: number): void {
@@ -1880,6 +2024,17 @@ class SafeDistanceSimulator {
         const speedDiffKmh = relativeVelocity * 3.6;
         this.audioEngine.playCrashSound(impactForceKN, speedDiffKmh);
         this.audioEngine.stopEngine();
+
+        // Trigger camera shake based on impact severity
+        const shakeIntensity = Math.min(0.1 + impactForceKN * 0.002, 0.15);
+        this.cameraEffects.triggerShake(shakeIntensity);
+
+        // Emit collision particles
+        const collisionPos = this.playerVehicle.mesh.position.clone().add(new THREE.Vector3(0, 0.5, -2));
+        this.particleSystem.emitSparks(collisionPos, impactForceKN / 50);
+        if (impactForceKN > 30) {
+          this.particleSystem.emitDebris(collisionPos, impactForceKN / 100);
+        }
 
         // Show crash report with flash animation - front collision with lead car
         this.showCrashReport(
@@ -2536,6 +2691,14 @@ class SafeDistanceSimulator {
     // Update rear car, oncoming traffic, and mirrors
     this.updateRearCar(clampedDelta);
     this.updateOncomingTraffic(clampedDelta);
+
+    // Update particles
+    this.updateParticles(clampedDelta);
+
+    // Update weather and time of day
+    this.weatherSystem.setPlayerPosition(this.playerVehicle.mesh.position);
+    this.weatherSystem.update(clampedDelta);
+    this.timeOfDay.update(clampedDelta);
 
     // Render mirrors every 2nd frame for better performance (3 extra scene renders)
     this.frameCount++;
