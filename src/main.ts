@@ -23,6 +23,7 @@ class SafeDistanceSimulator {
   private bridgeTexts: THREE.Sprite[] = [];
 
   private lastTime: number = 0;
+  private frameCount: number = 0; // For mirror render optimization (every 2nd frame)
 
   // HUD elements
   private warningTooCloseElement: HTMLElement;
@@ -31,6 +32,7 @@ class SafeDistanceSimulator {
   private gameStartOverlayElement!: HTMLElement;
   private speedometerCanvas: HTMLCanvasElement;
   private speedometerCtx: CanvasRenderingContext2D;
+  private speedometerBackground: ImageData | null = null;
 
   // Warning state
   private warningTimeout: number | null = null;
@@ -897,8 +899,9 @@ class SafeDistanceSimulator {
       this.spawnOncomingCar();
     }
 
-    // Update existing cars
-    for (let i = this.oncomingCars.length - 1; i >= 0; i--) {
+    // Update existing cars - using swap-and-pop for O(1) removal instead of O(n) splice
+    let i = 0;
+    while (i < this.oncomingCars.length) {
       // Oncoming cars move TOWARD player (decreasing world position)
       this.oncomingCarPositions[i] -= this.oncomingCarSpeeds[i] * deltaTime;
 
@@ -908,12 +911,23 @@ class SafeDistanceSimulator {
       // Add slight random weave for realism
       this.oncomingCars[i].position.x = this.ONCOMING_LANE_X + Math.sin(Date.now() * 0.001 + i) * 0.2;
 
-      // Remove if passed player
+      // Remove if passed player - swap with last element and pop (O(1) instead of O(n))
       if (this.oncomingCarPositions[i] < playerPos - this.ONCOMING_DESPAWN_BEHIND) {
         this.scene.remove(this.oncomingCars[i]);
-        this.oncomingCars.splice(i, 1);
-        this.oncomingCarPositions.splice(i, 1);
-        this.oncomingCarSpeeds.splice(i, 1);
+        const lastIdx = this.oncomingCars.length - 1;
+        if (i !== lastIdx) {
+          // Swap with last element
+          this.oncomingCars[i] = this.oncomingCars[lastIdx];
+          this.oncomingCarPositions[i] = this.oncomingCarPositions[lastIdx];
+          this.oncomingCarSpeeds[i] = this.oncomingCarSpeeds[lastIdx];
+        }
+        // Pop the last element (O(1))
+        this.oncomingCars.pop();
+        this.oncomingCarPositions.pop();
+        this.oncomingCarSpeeds.pop();
+        // Don't increment i - need to process swapped element
+      } else {
+        i++;
       }
     }
   }
@@ -1077,7 +1091,7 @@ class SafeDistanceSimulator {
     roadGroup.add(leftShoulder);
 
     // Right emergency lane
-    const rightShoulder = new THREE.Mesh(shoulderGeometry, shoulderMaterial.clone());
+    const rightShoulder = new THREE.Mesh(shoulderGeometry, shoulderMaterial);
     rightShoulder.rotation.x = -Math.PI / 2;
     rightShoulder.position.set(roadWidth / 2 + shoulderWidth / 2, 0.001, 0);
     rightShoulder.receiveShadow = true;
@@ -1109,34 +1123,48 @@ class SafeDistanceSimulator {
     roadGroup.add(leftRailBeam);
 
     // Right guard rail beam
-    const rightRailBeam = new THREE.Mesh(railBeamGeometry.clone(), railMaterial.clone());
+    const rightRailBeam = new THREE.Mesh(railBeamGeometry, railMaterial);
     rightRailBeam.position.set(guardRailX + 0.1, guardRailHeight - 0.15, 0);
     roadGroup.add(rightRailBeam);
 
     // Lower rail beam for double-rail look
     const lowerRailGeometry = new THREE.BoxGeometry(0.06, 0.2, roadLength);
 
-    const leftLowerRail = new THREE.Mesh(lowerRailGeometry, railMaterial.clone());
+    const leftLowerRail = new THREE.Mesh(lowerRailGeometry, railMaterial);
     leftLowerRail.position.set(-guardRailX - 0.1, guardRailHeight - 0.45, 0);
     roadGroup.add(leftLowerRail);
 
-    const rightLowerRail = new THREE.Mesh(lowerRailGeometry.clone(), railMaterial.clone());
+    const rightLowerRail = new THREE.Mesh(lowerRailGeometry, railMaterial);
     rightLowerRail.position.set(guardRailX + 0.1, guardRailHeight - 0.45, 0);
     roadGroup.add(rightLowerRail);
 
-    // Guard rail posts
+    // Guard rail posts - using InstancedMesh for better performance
     const postGeometry = new THREE.BoxGeometry(0.1, guardRailHeight, 0.1);
+    const postCount = Math.ceil(roadLength / guardRailPostSpacing);
+
+    // Create instanced meshes for left and right posts (single draw call each)
+    const leftPostsInstanced = new THREE.InstancedMesh(postGeometry, postMaterial, postCount);
+    const rightPostsInstanced = new THREE.InstancedMesh(postGeometry, postMaterial, postCount);
+
+    const dummy = new THREE.Object3D();
+    let instanceIndex = 0;
     for (let z = -roadLength / 2; z < roadLength / 2; z += guardRailPostSpacing) {
       // Left post
-      const leftPost = new THREE.Mesh(postGeometry, postMaterial);
-      leftPost.position.set(-guardRailX - 0.1, guardRailHeight / 2, z);
-      roadGroup.add(leftPost);
+      dummy.position.set(-guardRailX - 0.1, guardRailHeight / 2, z);
+      dummy.updateMatrix();
+      leftPostsInstanced.setMatrixAt(instanceIndex, dummy.matrix);
 
       // Right post
-      const rightPost = new THREE.Mesh(postGeometry, postMaterial.clone());
-      rightPost.position.set(guardRailX + 0.1, guardRailHeight / 2, z);
-      roadGroup.add(rightPost);
+      dummy.position.set(guardRailX + 0.1, guardRailHeight / 2, z);
+      dummy.updateMatrix();
+      rightPostsInstanced.setMatrixAt(instanceIndex, dummy.matrix);
+
+      instanceIndex++;
     }
+    leftPostsInstanced.instanceMatrix.needsUpdate = true;
+    rightPostsInstanced.instanceMatrix.needsUpdate = true;
+    roadGroup.add(leftPostsInstanced);
+    roadGroup.add(rightPostsInstanced);
 
     // Reflector posts on guard rails (orange/red reflectors)
     const reflectorGeometry = new THREE.BoxGeometry(0.05, 0.12, 0.02);
@@ -1168,7 +1196,7 @@ class SafeDistanceSimulator {
     leftGrass.receiveShadow = true;
     roadGroup.add(leftGrass);
 
-    const rightGrass = new THREE.Mesh(grassGeometry, grassMaterial.clone());
+    const rightGrass = new THREE.Mesh(grassGeometry, grassMaterial);
     rightGrass.rotation.x = -Math.PI / 2;
     rightGrass.position.set(guardRailX + 50, -0.01, 0);
     rightGrass.receiveShadow = true;
@@ -1328,6 +1356,12 @@ class SafeDistanceSimulator {
   }
 
   private updateKilometerText(sprite: THREE.Sprite, kmNumber: number): void {
+    // Skip update if km number hasn't changed (avoids GPU texture uploads)
+    if ((sprite as any).lastKmNumber === kmNumber) {
+      return;
+    }
+    (sprite as any).lastKmNumber = kmNumber;
+
     const canvas = (sprite as any).canvas;
     const context = (sprite as any).context;
     const texture = (sprite as any).texture;
@@ -1704,51 +1738,61 @@ class SafeDistanceSimulator {
     const centerY = canvas.height / 2;
     const radius = 80;
 
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw outer circle
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, radius + 10, 0, 2 * Math.PI);
-    ctx.strokeStyle = '#0f0';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-
-    // Draw speed markings (0 to 250 km/h)
     const maxSpeed = 250;
     const startAngle = -225 * (Math.PI / 180); // Start at bottom left
     const endAngle = 45 * (Math.PI / 180); // End at bottom right
     const angleRange = endAngle - startAngle;
 
-    // Draw tick marks
-    for (let i = 0; i <= 10; i++) {
-      const speedValue = (i / 10) * maxSpeed;
-      const angle = startAngle + (i / 10) * angleRange;
-      const cos = Math.cos(angle);
-      const sin = Math.sin(angle);
+    // Cache static background elements (drawn once, reused every frame)
+    if (!this.speedometerBackground) {
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Major tick
-      const innerRadius = radius - 10;
-      const outerRadius = radius;
+      // Draw outer circle
       ctx.beginPath();
-      ctx.moveTo(centerX + innerRadius * cos, centerY + innerRadius * sin);
-      ctx.lineTo(centerX + outerRadius * cos, centerY + outerRadius * sin);
+      ctx.arc(centerX, centerY, radius + 10, 0, 2 * Math.PI);
       ctx.strokeStyle = '#0f0';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 3;
       ctx.stroke();
 
-      // Speed numbers
-      const textRadius = radius - 25;
-      ctx.fillStyle = '#0f0';
-      ctx.font = '12px "Courier New"';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(
-        Math.round(speedValue).toString(),
-        centerX + textRadius * cos,
-        centerY + textRadius * sin
-      );
+      // Draw tick marks
+      for (let i = 0; i <= 10; i++) {
+        const speedValue = (i / 10) * maxSpeed;
+        const angle = startAngle + (i / 10) * angleRange;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        // Major tick
+        const innerRadius = radius - 10;
+        const outerRadius = radius;
+        ctx.beginPath();
+        ctx.moveTo(centerX + innerRadius * cos, centerY + innerRadius * sin);
+        ctx.lineTo(centerX + outerRadius * cos, centerY + outerRadius * sin);
+        ctx.strokeStyle = '#0f0';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Speed numbers
+        const textRadius = radius - 25;
+        ctx.fillStyle = '#0f0';
+        ctx.font = '12px "Courier New"';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(
+          Math.round(speedValue).toString(),
+          centerX + textRadius * cos,
+          centerY + textRadius * sin
+        );
+      }
+
+      // Cache the static background
+      this.speedometerBackground = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    } else {
+      // Restore cached background (much faster than redrawing)
+      ctx.putImageData(this.speedometerBackground, 0, 0);
     }
+
+    // Draw dynamic elements (needle and speed text) on top of cached background
 
     // Draw needle
     const needleAngle = startAngle + (Math.min(speed, maxSpeed) / maxSpeed) * angleRange;
@@ -2492,7 +2536,12 @@ class SafeDistanceSimulator {
     // Update rear car, oncoming traffic, and mirrors
     this.updateRearCar(clampedDelta);
     this.updateOncomingTraffic(clampedDelta);
-    this.updateMirrors();
+
+    // Render mirrors every 2nd frame for better performance (3 extra scene renders)
+    this.frameCount++;
+    if (this.frameCount % 2 === 0) {
+      this.updateMirrors();
+    }
 
     // Check for collision
     this.checkCollision();
