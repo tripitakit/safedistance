@@ -149,6 +149,17 @@ export class AudioEngine {
   }
 
   /**
+   * Stop all sounds (engine, weather, brake) - used on game over
+   */
+  public stopAllSounds(): void {
+    this.stopEngine();
+    this.stopBrakeSound();
+    if (this.isWeatherSoundPlaying) {
+      this.stopWeatherSound();
+    }
+  }
+
+  /**
    * Calculate RPM from speed using gear simulation
    */
   private calculateRPM(speedKmh: number): number {

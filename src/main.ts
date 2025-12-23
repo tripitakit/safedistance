@@ -2214,6 +2214,9 @@ class SafeDistanceSimulator {
       this.crashFlashElement.classList.add('hidden');
       this.gameOverElement.classList.remove('hidden');
 
+      // Stop all audio (engine, weather, brake sounds)
+      this.audioEngine.stopAllSounds();
+
       // Check if this is a high score
       await this.checkAndShowHighScoreInput();
     }, 2000);
