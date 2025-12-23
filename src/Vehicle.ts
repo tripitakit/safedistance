@@ -15,12 +15,8 @@ export class Vehicle {
   private config: VehicleConfig;
   private currentAcceleration: number = 0;
   private currentBraking: number = 0; // 0-1 (0-100%)
+  private traction: number = 1.0; // Weather-based traction multiplier (affects braking)
 
-  // Weight transfer (visual pitch)
-  private currentPitch: number = 0; // Current pitch angle in radians
-  private targetPitch: number = 0;  // Target pitch angle
-  private readonly MAX_PITCH = 0.03; // Maximum pitch angle (radians, ~1.7 degrees)
-  private readonly PITCH_SPEED = 8;  // How fast pitch changes
 
   constructor(config: VehicleConfig, color: number = 0xff0000) {
     this.config = config;
@@ -184,38 +180,7 @@ export class Vehicle {
       centerMirrorSurface.userData.mirrorType = 'center';
       group.add(centerMirrorSurface);
 
-      // PLAYER CAR HEADLIGHTS - visible on hood, shining forward
-      const headlightGeometry = new THREE.BoxGeometry(0.3, 0.2, 0.1);
-      const headlightMaterial = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        emissive: 0xffffcc,
-        emissiveIntensity: 3
-      });
-
-      // Left headlight
-      const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
-      leftHeadlight.position.set(-0.5, 0.55, -0.8);
-      group.add(leftHeadlight);
-
-      // Right headlight
-      const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial.clone());
-      rightHeadlight.position.set(0.5, 0.55, -0.8);
-      group.add(rightHeadlight);
-
-      // Headlight lens glow (bright white circles)
-      const lensGeometry = new THREE.CircleGeometry(0.08, 16);
-      const lensMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-      const leftLens = new THREE.Mesh(lensGeometry, lensMaterial);
-      leftLens.position.set(-0.5, 0.55, -0.86);
-      leftLens.rotation.y = Math.PI; // Face forward
-      group.add(leftLens);
-
-      const rightLens = new THREE.Mesh(lensGeometry, lensMaterial);
-      rightLens.position.set(0.5, 0.55, -0.86);
-      rightLens.rotation.y = Math.PI;
-      group.add(rightLens);
-
+      // PLAYER CAR HEADLIGHTS - lights only, no visible box meshes
       // Point lights for headlight glow
       const leftLight = new THREE.PointLight(0xffffee, 2, 20);
       leftLight.position.set(-0.5, 0.6, -1.2);
@@ -226,13 +191,13 @@ export class Vehicle {
       group.add(rightLight);
 
       // Spotlights for visible beam effect - stronger
-      const leftSpot = new THREE.SpotLight(0xffffdd, 5, 50, Math.PI / 6, 0.3);
+      const leftSpot = new THREE.SpotLight(0xffffdd, 8, 60, Math.PI / 6, 0.3);
       leftSpot.position.set(-0.5, 0.6, -0.9);
       leftSpot.target.position.set(-1, -0.5, -25);
       group.add(leftSpot);
       group.add(leftSpot.target);
 
-      const rightSpot = new THREE.SpotLight(0xffffdd, 5, 50, Math.PI / 6, 0.3);
+      const rightSpot = new THREE.SpotLight(0xffffdd, 8, 60, Math.PI / 6, 0.3);
       rightSpot.position.set(0.5, 0.6, -0.9);
       rightSpot.target.position.set(1, -0.5, -25);
       group.add(rightSpot);
@@ -247,7 +212,7 @@ export class Vehicle {
       const beamMaterial = new THREE.MeshBasicMaterial({
         color: 0xffffcc,
         transparent: true,
-        opacity: 0.08,
+        opacity: 0.12,
         side: THREE.DoubleSide,
         depthWrite: false,
         blending: THREE.AdditiveBlending
@@ -272,7 +237,7 @@ export class Vehicle {
       const groundLightMaterial = new THREE.MeshBasicMaterial({
         color: 0xffffdd,
         transparent: true,
-        opacity: 0.15,
+        opacity: 0.25,
         side: THREE.DoubleSide,
         depthWrite: false,
         blending: THREE.AdditiveBlending
@@ -295,7 +260,7 @@ export class Vehicle {
       const centerLightMaterial = new THREE.MeshBasicMaterial({
         color: 0xffffee,
         transparent: true,
-        opacity: 0.12,
+        opacity: 0.20,
         side: THREE.DoubleSide,
         depthWrite: false,
         blending: THREE.AdditiveBlending
@@ -434,7 +399,8 @@ export class Vehicle {
 
     // Braking force (currentBraking already scaled from 0.1 to 1.0)
     if (this.currentBraking > 0) {
-      force -= this.config.maxBrakingForce * this.currentBraking;
+      // Braking force reduced by traction (wet/rainy conditions reduce braking effectiveness)
+      force -= this.config.maxBrakingForce * this.currentBraking * this.traction;
     }
 
     // Drag force (air resistance) - reduced for better speed maintenance
@@ -466,27 +432,9 @@ export class Vehicle {
     this.updateWeightTransfer(acceleration, deltaTime);
   }
 
-  private updateWeightTransfer(_acceleration: number, deltaTime: number): void {
-    // Calculate target pitch based on acceleration
-    // Positive acceleration = rear squats (nose up, negative pitch)
-    // Negative acceleration (braking) = front dips (nose down, positive pitch)
-    if (this.currentBraking > 0) {
-      // Braking - front dips (positive pitch)
-      this.targetPitch = this.MAX_PITCH * this.currentBraking;
-    } else if (this.currentAcceleration > 0) {
-      // Accelerating - rear squats (negative pitch)
-      this.targetPitch = -this.MAX_PITCH * this.currentAcceleration * 0.5;
-    } else {
-      // Neutral - return to level
-      this.targetPitch = 0;
-    }
-
-    // Smooth interpolation to target pitch
-    const pitchDiff = this.targetPitch - this.currentPitch;
-    this.currentPitch += pitchDiff * this.PITCH_SPEED * deltaTime;
-
-    // Apply pitch to mesh (rotation around X axis)
-    this.mesh.rotation.x = this.currentPitch;
+  private updateWeightTransfer(_acceleration: number, _deltaTime: number): void {
+    // Car pitching disabled - keep vehicle level at all times
+    this.mesh.rotation.x = 0;
   }
 
   public getVelocityKmh(): number {
@@ -499,6 +447,14 @@ export class Vehicle {
 
   public getBrakingPercent(): number {
     return Math.round(this.currentBraking * 100);
+  }
+
+  public setTraction(traction: number): void {
+    this.traction = Math.max(0.1, Math.min(1.0, traction)); // Clamp between 0.1 and 1.0
+  }
+
+  public getTraction(): number {
+    return this.traction;
   }
 
   /**

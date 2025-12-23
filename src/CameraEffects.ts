@@ -15,7 +15,7 @@ const DEFAULT_CONFIG: CameraEffectsConfig = {
   maxSpeed: 250,              // km/h for max FOV
   shakeDecay: 5,              // How fast shake decays per second
   headBobFrequency: 3,        // Hz
-  headBobAmplitude: 0.008,    // Meters of vertical movement
+  headBobAmplitude: 0.0015,   // Meters of vertical movement (very subtle)
 };
 
 export class CameraEffects {
@@ -104,10 +104,10 @@ export class CameraEffects {
   }
 
   private updateBrakeShake(deltaTime: number, brakeIntensity: number, speed: number): void {
-    // Hard braking at speed causes camera shake
+    // Hard braking at speed causes subtle camera shake
     if (brakeIntensity > 0.5 && speed > 30) {
-      const intensity = (brakeIntensity - 0.5) * 2 * (speed / 150) * 0.015;
-      this.brakeShakeIntensity = Math.min(this.brakeShakeIntensity + intensity * deltaTime * 10, 0.03);
+      const intensity = (brakeIntensity - 0.5) * 2 * (speed / 150) * 0.004;
+      this.brakeShakeIntensity = Math.min(this.brakeShakeIntensity + intensity * deltaTime * 10, 0.008);
     } else {
       this.brakeShakeIntensity *= 0.9;
     }

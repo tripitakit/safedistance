@@ -9,6 +9,7 @@ interface TimeConfig {
   skyColor: number;
   fogColor: number;
   sunAngle: number; // Degrees from horizon
+  darkness: number; // 0 = bright day, 1 = full night darkness
 }
 
 const TIME_CONFIGS: Record<TimeState, TimeConfig> = {
@@ -19,6 +20,7 @@ const TIME_CONFIGS: Record<TimeState, TimeConfig> = {
     skyColor: 0xffaa77,
     fogColor: 0xddb088,
     sunAngle: 15,
+    darkness: 0.3, // Early morning, slightly dim
   },
   noon: {
     sunColor: 0xffffff,
@@ -27,6 +29,7 @@ const TIME_CONFIGS: Record<TimeState, TimeConfig> = {
     skyColor: 0x87ceeb,
     fogColor: 0x87ceeb,
     sunAngle: 70,
+    darkness: 0, // Bright daylight
   },
   sunset: {
     sunColor: 0xff8844,
@@ -35,6 +38,7 @@ const TIME_CONFIGS: Record<TimeState, TimeConfig> = {
     skyColor: 0xff6633,
     fogColor: 0xcc7755,
     sunAngle: 10,
+    darkness: 0.4, // Getting darker
   },
   night: {
     sunColor: 0x4466aa,
@@ -43,6 +47,7 @@ const TIME_CONFIGS: Record<TimeState, TimeConfig> = {
     skyColor: 0x112244,
     fogColor: 0x223355,
     sunAngle: -20,
+    darkness: 0.85, // Very dark
   },
 };
 
@@ -52,10 +57,15 @@ export class TimeOfDay {
   private ambientLight: THREE.AmbientLight;
   private fog: THREE.Fog;
 
-  private currentTime: TimeState = 'noon';
-  private targetTime: TimeState = 'noon';
+  private currentTime: TimeState = 'dawn';
+  private targetTime: TimeState = 'dawn';
   private transitionProgress: number = 1;
   private readonly TRANSITION_SPEED = 0.2;
+
+  // Auto-cycling
+  private autoCycleEnabled: boolean = true;
+  private autoCycleTimer: number = 0;
+  private readonly AUTO_CYCLE_INTERVAL = 120; // seconds between time changes
 
   constructor(scene: THREE.Scene, sunLight: THREE.DirectionalLight, ambientLight: THREE.AmbientLight) {
     this.scene = scene;
@@ -85,6 +95,15 @@ export class TimeOfDay {
    * Update time of day system
    */
   update(deltaTime: number): void {
+    // Auto-cycle time independently
+    if (this.autoCycleEnabled && this.transitionProgress >= 1) {
+      this.autoCycleTimer += deltaTime;
+      if (this.autoCycleTimer >= this.AUTO_CYCLE_INTERVAL) {
+        this.autoCycleTimer = 0;
+        this.cycleTime();
+      }
+    }
+
     if (this.transitionProgress >= 1) return;
 
     this.transitionProgress = Math.min(1, this.transitionProgress + this.TRANSITION_SPEED * deltaTime);
@@ -166,5 +185,33 @@ export class TimeOfDay {
    */
   isNight(): boolean {
     return this.currentTime === 'night' || this.targetTime === 'night';
+  }
+
+  /**
+   * Get current darkness factor (0 = bright day, 1 = full night)
+   * Used by weather system to darken fog at night
+   */
+  getDarkness(): number {
+    const currentConfig = TIME_CONFIGS[this.currentTime];
+    const targetConfig = TIME_CONFIGS[this.targetTime];
+
+    return THREE.MathUtils.lerp(
+      currentConfig.darkness,
+      targetConfig.darkness,
+      this.transitionProgress
+    );
+  }
+
+  /**
+   * Get the time-of-day fog color for blending with weather
+   */
+  getFogColor(): THREE.Color {
+    const currentConfig = TIME_CONFIGS[this.currentTime];
+    const targetConfig = TIME_CONFIGS[this.targetTime];
+
+    const currentFogColor = new THREE.Color(currentConfig.fogColor);
+    const targetFogColor = new THREE.Color(targetConfig.fogColor);
+
+    return currentFogColor.lerp(targetFogColor, this.transitionProgress);
   }
 }

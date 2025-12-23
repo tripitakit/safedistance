@@ -347,7 +347,8 @@ body {
 .speedometer {
   position: absolute;
   bottom: 20px;
-  right: 20px;
+  left: 50%;
+  transform: translateX(-50%);
   width: 200px;
   height: 200px;
   background: rgba(0, 0, 0, 0.7);
@@ -1329,12 +1330,12 @@ body {
     font-size: 28px;
   }
 
-  /* Speedometer to top right */
+  /* Speedometer centered at bottom on mobile */
   .speedometer {
-    top: 10px;
-    bottom: auto;
-    right: 10px;
-    transform: none;
+    bottom: 10px;
+    top: auto;
+    left: 50%;
+    transform: translateX(-50%);
     width: 160px;
     height: 160px;
   }

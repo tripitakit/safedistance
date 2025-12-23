@@ -31,16 +31,16 @@ const PARTICLE_CONFIGS: Record<ParticleType, {
 }> = {
   dust: {
     color: 0x8b7355,
-    size: [0.3, 0.8],
-    life: [2, 4],
+    size: [0.15, 0.4],
+    life: [1.5, 3],
     gravity: 0.5,
     drag: 0.98,
     fadeOut: true,
   },
   spray: {
     color: 0x666666,
-    size: [0.2, 0.5],
-    life: [1, 2],
+    size: [0.1, 0.25],
+    life: [0.8, 1.5],
     gravity: 0.3,
     drag: 0.95,
     fadeOut: true,
@@ -63,8 +63,8 @@ const PARTICLE_CONFIGS: Record<ParticleType, {
   },
   smoke: {
     color: 0x222222,
-    size: [0.5, 2],
-    life: [3, 6],
+    size: [0.2, 0.8],
+    life: [2, 4],
     gravity: -0.5, // Rises
     drag: 0.96,
     fadeOut: true,
@@ -118,7 +118,7 @@ export class ParticleSystem {
       size: 1,
       vertexColors: true,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.25,
       sizeAttenuation: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,

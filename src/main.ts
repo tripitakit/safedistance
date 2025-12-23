@@ -115,6 +115,16 @@ class SafeDistanceSimulator {
   private rearCarVelocity: number = 0; // m/s - rear car has its own velocity
   private rearCarPosition: number = 0; // Absolute position of rear car
 
+  // Rear car headlight flashing (aggressive tailgating)
+  private rearCarHeadlights: THREE.Mesh[] = [];
+  private rearCarPointLights: THREE.PointLight[] = [];
+  private rearCarFlashState: number = 0; // 0 = not flashing, 1-6 = flash sequence
+  private rearCarFlashTimer: number = 0;
+  private rearCarNextFlashTime: number = 0; // When to potentially start next flash sequence
+
+  // Mirror meshes for brightness adjustment during high beam flashes
+  private mirrorMeshes: THREE.Mesh[] = [];
+
   // Oncoming traffic system (left lane)
   private oncomingCars: THREE.Group[] = [];
   private oncomingCarPositions: number[] = []; // World positions (meters along road)
@@ -502,6 +512,9 @@ class SafeDistanceSimulator {
     // HEADLIGHTS - Large white rectangular planes at front of car
     // Car is rotated 180°, so local +Z faces the player (visible in mirrors)
     // Headlights at local +Z will appear at the front after rotation
+    this.rearCarHeadlights = []; // Reset array
+    this.rearCarPointLights = []; // Reset array
+
     const headlightMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffff, // Pure white, unlit - always bright
       side: THREE.DoubleSide
@@ -509,16 +522,17 @@ class SafeDistanceSimulator {
 
     // Left headlight - large white rectangle (at local +Z, faces player after 180° rotation)
     const leftHeadlightGeom = new THREE.PlaneGeometry(0.5, 0.3);
-    const leftHeadlight = new THREE.Mesh(leftHeadlightGeom, headlightMaterial);
+    const leftHeadlight = new THREE.Mesh(leftHeadlightGeom, headlightMaterial.clone());
     leftHeadlight.position.set(-0.65, 0.7, 2.01); // Raised with body
-    // No rotation needed - plane faces +Z by default, which after car rotation faces player
     this.rearCar.add(leftHeadlight);
+    this.rearCarHeadlights.push(leftHeadlight);
 
     // Right headlight - large white rectangle
     const rightHeadlightGeom = new THREE.PlaneGeometry(0.5, 0.3);
-    const rightHeadlight = new THREE.Mesh(rightHeadlightGeom, headlightMaterial);
+    const rightHeadlight = new THREE.Mesh(rightHeadlightGeom, headlightMaterial.clone());
     rightHeadlight.position.set(0.65, 0.7, 2.01); // Raised with body
     this.rearCar.add(rightHeadlight);
+    this.rearCarHeadlights.push(rightHeadlight);
 
     // Inner headlight pair (dual headlight look)
     const innerHeadlightMaterial = new THREE.MeshBasicMaterial({
@@ -528,26 +542,30 @@ class SafeDistanceSimulator {
 
     const leftInnerHeadlight = new THREE.Mesh(
       new THREE.PlaneGeometry(0.3, 0.25),
-      innerHeadlightMaterial
+      innerHeadlightMaterial.clone()
     );
     leftInnerHeadlight.position.set(-0.25, 0.7, 2.01); // Raised with body
     this.rearCar.add(leftInnerHeadlight);
+    this.rearCarHeadlights.push(leftInnerHeadlight);
 
     const rightInnerHeadlight = new THREE.Mesh(
       new THREE.PlaneGeometry(0.3, 0.25),
-      innerHeadlightMaterial
+      innerHeadlightMaterial.clone()
     );
     rightInnerHeadlight.position.set(0.25, 0.7, 2.01); // Raised with body
     this.rearCar.add(rightInnerHeadlight);
+    this.rearCarHeadlights.push(rightInnerHeadlight);
 
     // Point lights for headlight glow effect (at local +Z)
     const leftLight = new THREE.PointLight(0xffffee, 3, 25);
     leftLight.position.set(-0.5, 0.8, 2.5); // Raised with body
     this.rearCar.add(leftLight);
+    this.rearCarPointLights.push(leftLight);
 
     const rightLight = new THREE.PointLight(0xffffee, 3, 25);
     rightLight.position.set(0.5, 0.8, 2.5); // Raised with body
     this.rearCar.add(rightLight);
+    this.rearCarPointLights.push(rightLight);
 
     // Wheels with tire and rim
     const rearWheelPositions = [
@@ -628,6 +646,7 @@ class SafeDistanceSimulator {
     this.rightMirrorCamera = new THREE.PerspectiveCamera(40, 2, 0.1, 150);
 
     // Find and update mirror surfaces with appropriate render textures
+    this.mirrorMeshes = [];
     this.playerVehicle.mesh.children.forEach(child => {
       if (child instanceof THREE.Mesh && child.userData.isMirror) {
         const mirrorType = child.userData.mirrorType;
@@ -647,6 +666,9 @@ class SafeDistanceSimulator {
           map: texture,
           side: THREE.DoubleSide
         });
+
+        // Store reference for brightness adjustment during high beam flashes
+        this.mirrorMeshes.push(child);
       }
     });
   }
@@ -704,6 +726,12 @@ class SafeDistanceSimulator {
       targetAcceleration = speedDiff * 3 + 0.5; // Slight bias to speed up
     }
 
+    // Apply weather traction to braking (negative acceleration is less effective in rain)
+    const traction = this.weatherSystem.getTraction();
+    if (targetAcceleration < 0) {
+      targetAcceleration *= traction; // Braking reduced in wet conditions
+    }
+
     // Update rear car velocity with physics
     this.rearCarVelocity += targetAcceleration * deltaTime;
     this.rearCarVelocity = Math.max(0, Math.min(this.rearCarVelocity, 60)); // Cap at 216 km/h
@@ -733,6 +761,87 @@ class SafeDistanceSimulator {
     const visualDistance = Math.max(3.5, this.rearCarDistance);
     this.rearCar.position.z = playerZ + visualDistance;
     this.rearCar.position.x = 2.5 + (Math.sin(Date.now() * 0.0015) * 0.3); // Right lane with slight weaving
+
+    // Aggressive headlight flashing when tailgating close
+    this.updateRearCarHeadlightFlash(deltaTime, currentDistance);
+  }
+
+  private updateRearCarHeadlightFlash(deltaTime: number, distance: number): void {
+    const isAggressivelyClose = distance < 8 && distance > 3.5;
+
+    // Update flash timer
+    this.rearCarFlashTimer += deltaTime;
+
+    // If currently flashing, animate the flash sequence
+    if (this.rearCarFlashState > 0) {
+      const flashDuration = 0.08; // 80ms per flash state
+      if (this.rearCarFlashTimer >= flashDuration) {
+        this.rearCarFlashTimer = 0;
+        this.rearCarFlashState++;
+
+        // Flash sequence: on-off-on-off-on-off (6 states for 3 flashes)
+        if (this.rearCarFlashState > 6) {
+          this.rearCarFlashState = 0;
+          // Set next potential flash time (2-5 seconds)
+          this.rearCarNextFlashTime = 2 + Math.random() * 3;
+        }
+      }
+
+      // Apply flash state (odd = bright/on, even = dim/off)
+      const isFlashOn = this.rearCarFlashState % 2 === 1;
+      this.setRearCarHighBeams(isFlashOn);
+    } else {
+      // Not flashing - check if we should start a flash sequence
+      if (isAggressivelyClose && this.rearCarFlashTimer >= this.rearCarNextFlashTime) {
+        // 50% chance to flash when conditions are met
+        if (Math.random() < 0.5) {
+          this.rearCarFlashState = 1;
+          this.rearCarFlashTimer = 0;
+        } else {
+          // Didn't flash, wait another 1-3 seconds
+          this.rearCarNextFlashTime = this.rearCarFlashTimer + 1 + Math.random() * 2;
+        }
+      }
+
+      // Ensure headlights are at normal brightness when not flashing
+      this.setRearCarHighBeams(false);
+    }
+  }
+
+  private setRearCarHighBeams(highBeamsOn: boolean): void {
+    const brightness = highBeamsOn ? 2.5 : 1.0;
+    const lightIntensity = highBeamsOn ? 8 : 3;
+
+    // Update headlight mesh colors
+    for (const headlight of this.rearCarHeadlights) {
+      const material = headlight.material as THREE.MeshBasicMaterial;
+      if (highBeamsOn) {
+        material.color.setHex(0xffffee);
+      } else {
+        // Original colors - outer white, inner warm white
+        const isInner = Math.abs(headlight.position.x) < 0.5;
+        material.color.setHex(isInner ? 0xffffcc : 0xffffff);
+      }
+      // Scale brightness by adjusting the mesh scale slightly for visual effect
+      headlight.scale.setScalar(brightness);
+    }
+
+    // Update point light intensities
+    for (const light of this.rearCarPointLights) {
+      light.intensity = lightIntensity;
+    }
+
+    // Brighten mirrors when high beams flash (simulates being blinded)
+    for (const mirror of this.mirrorMeshes) {
+      const material = mirror.material as THREE.MeshBasicMaterial;
+      if (highBeamsOn) {
+        // Bright wash-out effect - simulate eye being flashed
+        material.color.setRGB(2.5, 2.5, 2.2);
+      } else {
+        // Normal mirror - neutral white
+        material.color.setRGB(1, 1, 1);
+      }
+    }
   }
 
   private triggerRearCollision(): void {
@@ -1107,6 +1216,7 @@ class SafeDistanceSimulator {
     const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
     roadMesh.rotation.x = -Math.PI / 2;
     roadMesh.receiveShadow = true;
+    roadMesh.userData.isGround = true; // For snow whitening effect
     roadGroup.add(roadMesh);
 
     // Road markings - solid yellow center line (double line for two-lane road)
@@ -1158,6 +1268,7 @@ class SafeDistanceSimulator {
     leftShoulder.rotation.x = -Math.PI / 2;
     leftShoulder.position.set(-roadWidth / 2 - shoulderWidth / 2, 0.001, 0);
     leftShoulder.receiveShadow = true;
+    leftShoulder.userData.isGround = true; // For snow whitening effect
     roadGroup.add(leftShoulder);
 
     // Right emergency lane
@@ -1165,6 +1276,7 @@ class SafeDistanceSimulator {
     rightShoulder.rotation.x = -Math.PI / 2;
     rightShoulder.position.set(roadWidth / 2 + shoulderWidth / 2, 0.001, 0);
     rightShoulder.receiveShadow = true;
+    rightShoulder.userData.isGround = true; // For snow whitening effect
     roadGroup.add(rightShoulder);
 
     // Guard rails on outer edge of emergency lanes
@@ -1264,12 +1376,14 @@ class SafeDistanceSimulator {
     leftGrass.rotation.x = -Math.PI / 2;
     leftGrass.position.set(-guardRailX - 50, -0.01, 0);
     leftGrass.receiveShadow = true;
+    leftGrass.userData.isGround = true; // For snow whitening effect
     roadGroup.add(leftGrass);
 
     const rightGrass = new THREE.Mesh(grassGeometry, grassMaterial);
     rightGrass.rotation.x = -Math.PI / 2;
     rightGrass.position.set(guardRailX + 50, -0.01, 0);
     rightGrass.receiveShadow = true;
+    rightGrass.userData.isGround = true; // For snow whitening effect
     roadGroup.add(rightGrass);
 
     // Store road length for infinite scrolling
@@ -1814,33 +1928,7 @@ class SafeDistanceSimulator {
   }
 
   private updateParticles(deltaTime: number): void {
-    const speed = this.playerVehicle.getVelocityKmh();
-    const brakeIntensity = this.inputController.getBrakeIntensity();
-    const playerPos = this.playerVehicle.mesh.position;
-
-    // Emit dust at high speeds
-    if (speed > 80 && !this.isCrashing) {
-      // Left wheel dust
-      this.particleSystem.emitDust(
-        playerPos.clone().add(new THREE.Vector3(-0.8, 0, 1)),
-        speed
-      );
-      // Right wheel dust
-      this.particleSystem.emitDust(
-        playerPos.clone().add(new THREE.Vector3(0.8, 0, 1)),
-        speed
-      );
-    }
-
-    // Emit brake spray when braking hard
-    if (brakeIntensity > 0.3 && speed > 20 && !this.isCrashing) {
-      this.particleSystem.emitBrakeSpray(
-        playerPos.clone().add(new THREE.Vector3(0, 0.2, 1.5)),
-        brakeIntensity
-      );
-    }
-
-    // Update particle physics
+    // Update particle physics (dust/smoke emissions removed for cleaner visuals)
     this.particleSystem.update(deltaTime);
   }
 
@@ -1973,10 +2061,19 @@ class SafeDistanceSimulator {
 
   private calculateSafeDistance(): number {
     // Safe distance = reaction time × speed + braking distance factor
+    // Braking distance increases when traction is reduced (rain, snow, ice)
     const speedMs = this.playerVehicle.velocity;
+    const traction = this.weatherSystem.getTraction();
+
+    // Braking distance is inversely proportional to traction
+    // traction = 1.0 (dry): normal braking
+    // traction = 0.5 (wet): 2x braking distance
+    // traction = 0.4 (icy): 2.5x braking distance
+    const brakingDistanceFactor = 0.5 / traction;
+
     const safeDistance = Math.max(
       this.MIN_SAFE_DISTANCE,
-      speedMs * this.SAFE_DISTANCE_FACTOR + speedMs * 0.5
+      speedMs * this.SAFE_DISTANCE_FACTOR + speedMs * brakingDistanceFactor
     );
     return safeDistance;
   }
@@ -2695,10 +2792,19 @@ class SafeDistanceSimulator {
     // Update particles
     this.updateParticles(clampedDelta);
 
-    // Update weather and time of day
-    this.weatherSystem.setPlayerPosition(this.playerVehicle.mesh.position);
-    this.weatherSystem.update(clampedDelta);
+    // Update time of day first (controls lighting and darkness)
     this.timeOfDay.update(clampedDelta);
+
+    // Update weather with time-of-day darkness (fog at night should be very dark)
+    this.weatherSystem.setTimeDarkness(this.timeOfDay.getDarkness());
+    this.weatherSystem.setPlayerPosition(this.playerVehicle.mesh.position);
+    this.weatherSystem.setPlayerSpeed(this.playerVehicle.velocity); // For rain/snow rush effect
+    this.weatherSystem.update(clampedDelta);
+
+    // Apply weather traction to all vehicles (affects braking in rain/wet conditions)
+    const weatherTraction = this.weatherSystem.getTraction();
+    this.playerVehicle.setTraction(weatherTraction);
+    this.leadVehicle.setTraction(weatherTraction);
 
     // Render mirrors every 2nd frame for better performance (3 extra scene renders)
     this.frameCount++;
