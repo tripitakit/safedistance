@@ -687,9 +687,19 @@ class SafeDistanceSimulator {
     }
 
     // Aggressive tailgating - follows at 5-12m (close but not overlapping)
+    // In bad weather, visibility is reduced so tailgater follows even CLOSER (more dangerous!)
     if (Math.random() < 0.02) {
-      const minDistance = Math.max(5, 7 - playerSpeed / 50); // Minimum 5m
-      const maxDistance = Math.max(12, 16 - playerSpeed / 30);
+      const traction = this.weatherSystem.getTraction();
+      // Visibility factor: 1.0 in clear weather, down to 0.6 in blizzard
+      // Lower visibility = tailgater follows closer (dangerous!)
+      const visibilityFactor = 0.6 + traction * 0.4;
+
+      const baseMinDistance = Math.max(5, 7 - playerSpeed / 50);
+      const baseMaxDistance = Math.max(12, 16 - playerSpeed / 30);
+
+      // Reduce following distance in bad weather (simulates reduced visibility awareness)
+      const minDistance = baseMinDistance * visibilityFactor;
+      const maxDistance = baseMaxDistance * visibilityFactor;
       this.rearCarTargetDistance = minDistance + Math.random() * (maxDistance - minDistance);
     }
 
@@ -2769,6 +2779,11 @@ class SafeDistanceSimulator {
       const brakeInput = this.inputController.getBrakingInput();
       this.audioEngine.updateEngine(speedKmh, accelInput);
       this.audioEngine.updateBrakeSound(brakeInput, speedKmh);
+
+      // Update weather sounds (rain, wind)
+      const rainIntensity = this.weatherSystem.getRainIntensity();
+      const snowIntensity = this.weatherSystem.getSnowIntensity();
+      this.audioEngine.updateWeatherSound(rainIntensity, snowIntensity, speedKmh);
     }
 
     // Update lead vehicle AI (unless crashing)
@@ -2799,12 +2814,15 @@ class SafeDistanceSimulator {
     this.weatherSystem.setTimeDarkness(this.timeOfDay.getDarkness());
     this.weatherSystem.setPlayerPosition(this.playerVehicle.mesh.position);
     this.weatherSystem.setPlayerSpeed(this.playerVehicle.velocity); // For rain/snow rush effect
+    // Headlights on when it's dark enough (for rain reflection effect)
+    this.weatherSystem.setHeadlights(this.timeOfDay.getDarkness() > 0.2);
     this.weatherSystem.update(clampedDelta);
 
     // Apply weather traction to all vehicles (affects braking in rain/wet conditions)
     const weatherTraction = this.weatherSystem.getTraction();
     this.playerVehicle.setTraction(weatherTraction);
     this.leadVehicle.setTraction(weatherTraction);
+    this.leadVehicleAI.setTraction(weatherTraction); // AI brakes more suddenly in bad weather
 
     // Render mirrors every 2nd frame for better performance (3 extra scene renders)
     this.frameCount++;

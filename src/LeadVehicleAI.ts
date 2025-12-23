@@ -17,10 +17,21 @@ export class LeadVehicleAI {
   private readonly MIN_SPEED = 30; // km/h
   private readonly CRUISE_SPEED = 130; // km/h
 
+  // Weather-based visibility/traction (affects braking behavior)
+  private traction: number = 1.0;
+
   constructor(vehicle: Vehicle) {
     this.vehicle = vehicle;
     this.targetSpeed = this.CRUISE_SPEED;
     this.vehicle.setVelocity(this.MIN_SPEED);
+  }
+
+  /**
+   * Set weather traction - affects braking behavior
+   * In bad weather, lead vehicle brakes more suddenly and harder
+   */
+  public setTraction(traction: number): void {
+    this.traction = traction;
   }
 
   public update(deltaTime: number): void {
@@ -70,13 +81,23 @@ export class LeadVehicleAI {
       this.vehicle.setBraking(0);
     }
 
+    // In bad weather, lead vehicle brakes more frequently and more suddenly
+    // (simulates reduced visibility - they see hazards later)
+    const weatherFactor = 1.0 - (1.0 - this.traction) * 1.5; // 1.0 in clear, down to 0.4 in blizzard
+    const minCruiseTime = 3 * weatherFactor; // Less cruise time in bad weather (3-5s vs 5s)
+    const cruiseTimeRange = 8 * weatherFactor; // Less variation in bad weather
+
     // Random events: decide to brake or speed up
-    if (this.stateTimer > 5 + Math.random() * 10) { // Every 5-15 seconds
-      if (Math.random() > 0.5) {
-        // Start braking
+    if (this.stateTimer > minCruiseTime + Math.random() * cruiseTimeRange) {
+      // In bad weather, more likely to brake (sees hazards suddenly)
+      const brakeChance = 0.5 + (1.0 - this.traction) * 0.3; // 50% to 80% brake chance
+
+      if (Math.random() < brakeChance) {
+        // Start braking - harder braking in bad weather (panic braking)
         this.state = AIState.BRAKING;
-        // Random braking intensity in steps of 10%
-        this.brakingIntensity = Math.floor(Math.random() * 10 + 1) / 10; // 0.1 to 1.0
+        // Random braking intensity - higher base in bad weather
+        const minIntensity = 0.1 + (1.0 - this.traction) * 0.3; // 0.1 to 0.4 base
+        this.brakingIntensity = minIntensity + Math.random() * (1.0 - minIntensity);
         this.stateTimer = 0;
       } else {
         // Change target speed (sometimes exceed speed limit)

@@ -23,6 +23,17 @@ export class AudioEngine {
   private brakeGain: GainNode | null = null;
   private isBrakeSoundPlaying: boolean = false;
 
+  // Weather sound nodes
+  private rainNoiseSource: AudioBufferSourceNode | null = null;
+  private rainFilter: BiquadFilterNode | null = null;
+  private rainGain: GainNode | null = null;
+  private windNoiseSource: AudioBufferSourceNode | null = null;
+  private windFilter: BiquadFilterNode | null = null;
+  private windGain: GainNode | null = null;
+  private isWeatherSoundPlaying: boolean = false;
+  private currentRainIntensity: number = 0;
+  private currentWindIntensity: number = 0;
+
   // Gear ratios for RPM calculation (simplified 5-speed)
   private readonly GEAR_RATIOS = [3.5, 2.2, 1.5, 1.0, 0.75];
   private readonly FINAL_DRIVE = 3.5;
@@ -318,6 +329,166 @@ export class AudioEngine {
     }, 100);
 
     this.isBrakeSoundPlaying = false;
+  }
+
+  /**
+   * Update weather sounds based on weather conditions
+   * @param rainIntensity - 0 to 1 (0 = no rain, 1 = heavy rain)
+   * @param snowIntensity - 0 to 1 (0 = no snow, 1 = blizzard)
+   * @param speedKmh - player speed for wind intensity
+   */
+  public updateWeatherSound(rainIntensity: number, snowIntensity: number, speedKmh: number): void {
+    if (!this.isInitialized || !this.audioContext || !this.masterGain) return;
+
+    // Calculate wind intensity from snow (blizzard = more wind) and speed
+    const windFromWeather = snowIntensity * 0.7; // Blizzard creates wind
+    const windFromSpeed = Math.min(speedKmh / 150, 1) * 0.5; // Speed creates wind noise
+    const totalWindIntensity = Math.min(windFromWeather + windFromSpeed, 1);
+
+    // Check if we need to start or stop weather sounds
+    const needsWeatherSound = rainIntensity > 0.01 || totalWindIntensity > 0.05;
+
+    if (needsWeatherSound && !this.isWeatherSoundPlaying) {
+      this.startWeatherSound();
+    } else if (!needsWeatherSound && this.isWeatherSoundPlaying) {
+      this.stopWeatherSound();
+    }
+
+    // Update sound parameters
+    if (this.isWeatherSoundPlaying) {
+      this.updateRainSound(rainIntensity);
+      this.updateWindSound(totalWindIntensity, speedKmh);
+    }
+
+    this.currentRainIntensity = rainIntensity;
+    this.currentWindIntensity = totalWindIntensity;
+  }
+
+  private startWeatherSound(): void {
+    if (!this.audioContext || !this.masterGain || this.isWeatherSoundPlaying) return;
+
+    const now = this.audioContext.currentTime;
+
+    // RAIN SOUND - filtered noise with specific characteristics
+    const rainBuffer = this.createNoiseBuffer(10);
+    this.rainNoiseSource = this.audioContext.createBufferSource();
+    this.rainNoiseSource.buffer = rainBuffer;
+    this.rainNoiseSource.loop = true;
+
+    // Rain filter - high-pass for that "shhhh" rain sound
+    this.rainFilter = this.audioContext.createBiquadFilter();
+    this.rainFilter.type = 'highpass';
+    this.rainFilter.frequency.value = 1000;
+    this.rainFilter.Q.value = 0.5;
+
+    this.rainGain = this.audioContext.createGain();
+    this.rainGain.gain.setValueAtTime(0, now);
+
+    this.rainNoiseSource.connect(this.rainFilter);
+    this.rainFilter.connect(this.rainGain);
+    this.rainGain.connect(this.masterGain);
+    this.rainNoiseSource.start(now);
+
+    // WIND SOUND - lower frequency noise for whooshing
+    const windBuffer = this.createNoiseBuffer(10);
+    this.windNoiseSource = this.audioContext.createBufferSource();
+    this.windNoiseSource.buffer = windBuffer;
+    this.windNoiseSource.loop = true;
+
+    // Wind filter - band-pass for low whooshing sound
+    this.windFilter = this.audioContext.createBiquadFilter();
+    this.windFilter.type = 'bandpass';
+    this.windFilter.frequency.value = 300;
+    this.windFilter.Q.value = 0.8;
+
+    this.windGain = this.audioContext.createGain();
+    this.windGain.gain.setValueAtTime(0, now);
+
+    this.windNoiseSource.connect(this.windFilter);
+    this.windFilter.connect(this.windGain);
+    this.windGain.connect(this.masterGain);
+    this.windNoiseSource.start(now);
+
+    this.isWeatherSoundPlaying = true;
+  }
+
+  private stopWeatherSound(): void {
+    if (!this.audioContext) return;
+
+    const now = this.audioContext.currentTime;
+
+    // Fade out both sounds
+    if (this.rainGain) {
+      this.rainGain.gain.setTargetAtTime(0, now, 0.3);
+    }
+    if (this.windGain) {
+      this.windGain.gain.setTargetAtTime(0, now, 0.3);
+    }
+
+    // Stop after fade
+    setTimeout(() => {
+      if (this.rainNoiseSource) {
+        this.rainNoiseSource.stop();
+        this.rainNoiseSource.disconnect();
+        this.rainNoiseSource = null;
+      }
+      if (this.rainFilter) {
+        this.rainFilter.disconnect();
+        this.rainFilter = null;
+      }
+      if (this.rainGain) {
+        this.rainGain.disconnect();
+        this.rainGain = null;
+      }
+      if (this.windNoiseSource) {
+        this.windNoiseSource.stop();
+        this.windNoiseSource.disconnect();
+        this.windNoiseSource = null;
+      }
+      if (this.windFilter) {
+        this.windFilter.disconnect();
+        this.windFilter = null;
+      }
+      if (this.windGain) {
+        this.windGain.disconnect();
+        this.windGain = null;
+      }
+    }, 500);
+
+    this.isWeatherSoundPlaying = false;
+  }
+
+  private updateRainSound(intensity: number): void {
+    if (!this.audioContext || !this.rainGain || !this.rainFilter) return;
+
+    const now = this.audioContext.currentTime;
+
+    // Volume scales with intensity
+    const volume = intensity * 0.25; // Max 0.25 for rain
+    this.rainGain.gain.setTargetAtTime(volume, now, 0.1);
+
+    // Higher intensity = more high frequencies (heavier rain sound)
+    const filterFreq = 800 + intensity * 1500;
+    this.rainFilter.frequency.setTargetAtTime(filterFreq, now, 0.1);
+  }
+
+  private updateWindSound(intensity: number, speedKmh: number): void {
+    if (!this.audioContext || !this.windGain || !this.windFilter) return;
+
+    const now = this.audioContext.currentTime;
+
+    // Volume scales with intensity
+    const volume = intensity * 0.2; // Max 0.2 for wind
+    this.windGain.gain.setTargetAtTime(volume, now, 0.1);
+
+    // Higher speed = higher pitch wind noise
+    const baseFreq = 200 + speedKmh * 2;
+    const filterFreq = baseFreq + intensity * 200;
+    this.windFilter.frequency.setTargetAtTime(filterFreq, now, 0.1);
+
+    // Add some variation for realism
+    const wobble = Math.sin(now * 0.5) * 50;
+    this.windFilter.frequency.setTargetAtTime(filterFreq + wobble, now, 0.2);
   }
 
   /**

@@ -78,6 +78,7 @@ export class WeatherSystem {
   private rainGeometry: THREE.BufferGeometry | null = null;
   private rainPositions: Float32Array | null = null;
   private rainVelocities: Float32Array | null = null;
+  private rainColors: Float32Array | null = null; // For headlight reflection effect
 
   // Snow particles
   private snowParticles: THREE.Points | null = null;
@@ -110,6 +111,9 @@ export class WeatherSystem {
   // Time-of-day darkness factor (0 = bright day, 1 = full night)
   private timeDarkness: number = 0;
 
+  // Headlight state for rain reflections
+  private headlightsOn: boolean = false;
+
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.fog = scene.fog as THREE.Fog;
@@ -132,6 +136,7 @@ export class WeatherSystem {
     this.rainGeometry = new THREE.BufferGeometry();
     this.rainPositions = new Float32Array(this.RAIN_COUNT * 3);
     this.rainVelocities = new Float32Array(this.RAIN_COUNT);
+    this.rainColors = new Float32Array(this.RAIN_COUNT * 3); // RGB per particle
 
     // Initialize rain particles
     for (let i = 0; i < this.RAIN_COUNT; i++) {
@@ -139,17 +144,23 @@ export class WeatherSystem {
       this.rainPositions[i * 3 + 1] = Math.random() * this.PARTICLE_HEIGHT;
       this.rainPositions[i * 3 + 2] = (Math.random() - 0.5) * this.PARTICLE_AREA;
       this.rainVelocities[i] = 15 + Math.random() * 10; // Fall speed
+
+      // Default rain color (light blue-gray)
+      this.rainColors[i * 3] = 0.67;     // R
+      this.rainColors[i * 3 + 1] = 0.67; // G
+      this.rainColors[i * 3 + 2] = 0.8;  // B
     }
 
     this.rainGeometry.setAttribute('position', new THREE.BufferAttribute(this.rainPositions, 3));
+    this.rainGeometry.setAttribute('color', new THREE.BufferAttribute(this.rainColors, 3));
 
     const rainMaterial = new THREE.PointsMaterial({
-      color: 0xaaaacc,
       size: 0.1,
       transparent: true,
       opacity: 0.6,
       sizeAttenuation: true,
       depthWrite: false,
+      vertexColors: true, // Enable per-particle colors for headlight reflections
     });
 
     this.rainParticles = new THREE.Points(this.rainGeometry, rainMaterial);
@@ -281,10 +292,45 @@ export class WeatherSystem {
   }
 
   /**
+   * Get current rain intensity (0-1) for audio
+   */
+  getRainIntensity(): number {
+    const currentConfig = WEATHER_CONFIGS[this.currentWeather];
+    const targetConfig = WEATHER_CONFIGS[this.targetWeather];
+
+    return THREE.MathUtils.lerp(
+      currentConfig.rainIntensity,
+      targetConfig.rainIntensity,
+      this.transitionProgress
+    );
+  }
+
+  /**
+   * Get current snow intensity (0-1) for audio
+   */
+  getSnowIntensity(): number {
+    const currentConfig = WEATHER_CONFIGS[this.currentWeather];
+    const targetConfig = WEATHER_CONFIGS[this.targetWeather];
+
+    return THREE.MathUtils.lerp(
+      currentConfig.snowIntensity,
+      targetConfig.snowIntensity,
+      this.transitionProgress
+    );
+  }
+
+  /**
    * Set time-of-day darkness factor (called from main with TimeOfDay.getDarkness())
    */
   setTimeDarkness(darkness: number): void {
     this.timeDarkness = darkness;
+  }
+
+  /**
+   * Set headlights state for rain reflection effect
+   */
+  setHeadlights(on: boolean): void {
+    this.headlightsOn = on;
   }
 
   /**
@@ -368,7 +414,7 @@ export class WeatherSystem {
   }
 
   private updateRain(deltaTime: number): void {
-    if (!this.rainParticles || !this.rainPositions || !this.rainVelocities) return;
+    if (!this.rainParticles || !this.rainPositions || !this.rainVelocities || !this.rainColors) return;
 
     const currentConfig = WEATHER_CONFIGS[this.currentWeather];
     const targetConfig = WEATHER_CONFIGS[this.targetWeather];
@@ -394,6 +440,13 @@ export class WeatherSystem {
     // Particles appear to rush toward the player (positive Z in local space)
     const speedRushFactor = this.playerSpeed * 0.8; // Scale speed effect for rain
 
+    // Headlight beam parameters (in local particle space)
+    // Beam is in front of player (-Z), low (Y < 5), and within ~8m width (X)
+    const beamMaxZ = 5;     // How far behind player beam is still visible
+    const beamMinZ = -35;   // How far ahead of player beam reaches
+    const beamMaxX = 8;     // Width of beam
+    const beamMaxY = 6;     // Height of beam
+
     // Animate rain falling
     for (let i = 0; i < this.RAIN_COUNT; i++) {
       // Only animate a portion based on intensity
@@ -401,6 +454,10 @@ export class WeatherSystem {
         this.rainPositions[i * 3 + 1] = -100; // Hide excess particles
         continue;
       }
+
+      const x = this.rainPositions[i * 3];
+      const y = this.rainPositions[i * 3 + 1];
+      const z = this.rainPositions[i * 3 + 2];
 
       // Move rain down
       this.rainPositions[i * 3 + 1] -= this.rainVelocities[i] * deltaTime;
@@ -410,6 +467,37 @@ export class WeatherSystem {
 
       // Rush toward player based on car speed (particles move in +Z direction)
       this.rainPositions[i * 3 + 2] += speedRushFactor * deltaTime;
+
+      // Headlight reflection effect
+      if (this.headlightsOn) {
+        // Check if particle is in headlight beam area
+        const inBeamZ = z > beamMinZ && z < beamMaxZ;
+        const inBeamX = Math.abs(x) < beamMaxX;
+        const inBeamY = y > 0 && y < beamMaxY;
+
+        if (inBeamZ && inBeamX && inBeamY) {
+          // Calculate intensity based on position in beam (brighter near center)
+          const zFactor = 1 - Math.abs(z - beamMinZ / 2) / (-beamMinZ);
+          const xFactor = 1 - Math.abs(x) / beamMaxX;
+          const yFactor = 1 - y / beamMaxY;
+          const beamIntensity = zFactor * xFactor * yFactor;
+
+          // Bright white/yellow in headlight beam
+          this.rainColors[i * 3] = 0.67 + beamIntensity * 0.33;     // R (up to 1.0)
+          this.rainColors[i * 3 + 1] = 0.67 + beamIntensity * 0.33; // G (up to 1.0)
+          this.rainColors[i * 3 + 2] = 0.8 + beamIntensity * 0.2;   // B (up to 1.0)
+        } else {
+          // Default rain color outside beam
+          this.rainColors[i * 3] = 0.67;
+          this.rainColors[i * 3 + 1] = 0.67;
+          this.rainColors[i * 3 + 2] = 0.8;
+        }
+      } else {
+        // Headlights off - default color
+        this.rainColors[i * 3] = 0.67;
+        this.rainColors[i * 3 + 1] = 0.67;
+        this.rainColors[i * 3 + 2] = 0.8;
+      }
 
       // Reset if below ground OR if rushed past player (behind camera)
       if (this.rainPositions[i * 3 + 1] < 0 || this.rainPositions[i * 3 + 2] > this.PARTICLE_AREA / 2) {
@@ -422,6 +510,7 @@ export class WeatherSystem {
 
     // Mark for GPU update
     this.rainGeometry!.attributes.position.needsUpdate = true;
+    this.rainGeometry!.attributes.color.needsUpdate = true;
   }
 
   private updateSnow(deltaTime: number): void {
