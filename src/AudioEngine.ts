@@ -39,6 +39,10 @@ export class AudioEngine {
   private readonly IDLE_RPM = 800;
   private readonly REDLINE_RPM = 6500;
 
+  // Pre-generated noise buffers to avoid runtime allocation stutter
+  private longNoiseBuffer: AudioBuffer | null = null;  // For looping sounds (brake, rain, wind)
+  private shortNoiseBuffer: AudioBuffer | null = null; // For one-shot sounds (crash, metal, glass)
+
   constructor() {
     // AudioContext created on init() due to browser autoplay policy
   }
@@ -56,6 +60,10 @@ export class AudioEngine {
       this.masterGain = this.audioContext.createGain();
       this.masterGain.gain.value = 0.5;
       this.masterGain.connect(this.audioContext.destination);
+
+      // Pre-generate noise buffers to avoid runtime allocation stutter
+      this.longNoiseBuffer = this.createNoiseBuffer(10);  // 10s for looping sounds
+      this.shortNoiseBuffer = this.createNoiseBuffer(1);  // 1s for one-shot sounds
 
       this.isInitialized = true;
     } catch (e) {
@@ -268,14 +276,13 @@ export class AudioEngine {
   }
 
   private startBrakeSound(): void {
-    if (!this.audioContext || !this.masterGain || this.isBrakeSoundPlaying) return;
+    if (!this.audioContext || !this.masterGain || this.isBrakeSoundPlaying || !this.longNoiseBuffer) return;
 
     const now = this.audioContext.currentTime;
 
-    // Create long noise buffer for continuous sound
-    const noiseBuffer = this.createNoiseBuffer(10);
+    // Use pre-generated noise buffer for continuous sound
     this.brakeNoiseSource = this.audioContext.createBufferSource();
-    this.brakeNoiseSource.buffer = noiseBuffer;
+    this.brakeNoiseSource.buffer = this.longNoiseBuffer;
     this.brakeNoiseSource.loop = true;
 
     // First filter - high frequency screech (main tire squeal)
@@ -372,14 +379,13 @@ export class AudioEngine {
   }
 
   private startWeatherSound(): void {
-    if (!this.audioContext || !this.masterGain || this.isWeatherSoundPlaying) return;
+    if (!this.audioContext || !this.masterGain || this.isWeatherSoundPlaying || !this.longNoiseBuffer) return;
 
     const now = this.audioContext.currentTime;
 
-    // RAIN SOUND - filtered noise with specific characteristics
-    const rainBuffer = this.createNoiseBuffer(10);
+    // RAIN SOUND - use pre-generated noise buffer
     this.rainNoiseSource = this.audioContext.createBufferSource();
-    this.rainNoiseSource.buffer = rainBuffer;
+    this.rainNoiseSource.buffer = this.longNoiseBuffer;
     this.rainNoiseSource.loop = true;
 
     // Rain filter - high-pass for that "shhhh" rain sound
@@ -396,10 +402,9 @@ export class AudioEngine {
     this.rainGain.connect(this.masterGain);
     this.rainNoiseSource.start(now);
 
-    // WIND SOUND - lower frequency noise for whooshing
-    const windBuffer = this.createNoiseBuffer(10);
+    // WIND SOUND - use pre-generated noise buffer
     this.windNoiseSource = this.audioContext.createBufferSource();
-    this.windNoiseSource.buffer = windBuffer;
+    this.windNoiseSource.buffer = this.longNoiseBuffer;
     this.windNoiseSource.loop = true;
 
     // Wind filter - band-pass for low whooshing sound
@@ -531,16 +536,15 @@ export class AudioEngine {
    * Play crash sound based on impact severity
    */
   public playCrashSound(impactForceKN: number, speedDiffKmh: number): void {
-    if (!this.isInitialized || !this.audioContext || !this.masterGain) return;
+    if (!this.isInitialized || !this.audioContext || !this.masterGain || !this.shortNoiseBuffer) return;
 
     const now = this.audioContext.currentTime;
     const severity = this.getSeverity(impactForceKN, speedDiffKmh);
 
-    // Create noise source for impact body
+    // Use pre-generated noise buffer for impact body
     const noiseDuration = 0.5 + severity * 0.4;
-    const noiseBuffer = this.createNoiseBuffer(noiseDuration);
     const noiseSource = this.audioContext.createBufferSource();
-    noiseSource.buffer = noiseBuffer;
+    noiseSource.buffer = this.shortNoiseBuffer;
 
     // Low-pass filter - lower cutoff for heavier crashes (more bass)
     const filter = this.audioContext.createBiquadFilter();
@@ -583,14 +587,13 @@ export class AudioEngine {
    * Play metallic impact sound
    */
   private playMetalSound(severity: number): void {
-    if (!this.audioContext || !this.masterGain) return;
+    if (!this.audioContext || !this.masterGain || !this.shortNoiseBuffer) return;
 
     const now = this.audioContext.currentTime;
 
-    // Create a short noise burst for initial transient
-    const noiseBuffer = this.createNoiseBuffer(0.1);
+    // Use pre-generated noise buffer for initial transient
     const noise = this.audioContext.createBufferSource();
-    noise.buffer = noiseBuffer;
+    noise.buffer = this.shortNoiseBuffer;
 
     // Band-pass for metallic resonance
     const bandpass = this.audioContext.createBiquadFilter();
@@ -615,15 +618,14 @@ export class AudioEngine {
    * Play glass shattering sound
    */
   private playGlassSound(severity: number): void {
-    if (!this.audioContext || !this.masterGain) return;
+    if (!this.audioContext || !this.masterGain || !this.shortNoiseBuffer) return;
 
     const now = this.audioContext.currentTime;
     const delay = 0.05; // Slight delay after main impact
 
-    // High-frequency noise for glass
-    const noiseBuffer = this.createNoiseBuffer(0.4);
+    // Use pre-generated noise buffer for glass sound
     const noise = this.audioContext.createBufferSource();
-    noise.buffer = noiseBuffer;
+    noise.buffer = this.shortNoiseBuffer;
 
     // High-pass for glassy brightness
     const hipass = this.audioContext.createBiquadFilter();

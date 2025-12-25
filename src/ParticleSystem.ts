@@ -82,6 +82,9 @@ export class ParticleSystem {
   private alphas: Float32Array;
   private poolSize: number;
 
+  // Reusable temp vector to avoid GC allocations in update loop
+  private static readonly tempVelocity = new THREE.Vector3();
+
   constructor(scene: THREE.Scene, poolSize: number = 500) {
     this.scene = scene;
     this.poolSize = poolSize;
@@ -293,7 +296,9 @@ export class ParticleSystem {
       // Apply physics
       particle.velocity.y -= config.gravity * deltaTime;
       particle.velocity.multiplyScalar(config.drag);
-      particle.position.add(particle.velocity.clone().multiplyScalar(deltaTime));
+      // Use static temp vector to avoid GC allocations
+      ParticleSystem.tempVelocity.copy(particle.velocity).multiplyScalar(deltaTime);
+      particle.position.add(ParticleSystem.tempVelocity);
 
       // Update alpha based on life
       if (config.fadeOut) {

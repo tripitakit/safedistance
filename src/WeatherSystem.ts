@@ -115,6 +115,12 @@ export class WeatherSystem {
   // Headlight state for rain/snow reflections (always on)
   private headlightsOn: boolean = true;
 
+  // Reusable Color objects to avoid GC allocations in update loop
+  private readonly tempCurrentColor = new THREE.Color();
+  private readonly tempTargetColor = new THREE.Color();
+  private readonly tempNightColor = new THREE.Color(0x111122);
+  private readonly tempSnowColor = new THREE.Color(0xeeeeff);
+
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.fog = scene.fog as THREE.Fog;
@@ -372,25 +378,24 @@ export class WeatherSystem {
     const fogNear = THREE.MathUtils.lerp(currentConfig.fogNear, targetConfig.fogNear, this.transitionProgress);
     const fogFar = THREE.MathUtils.lerp(currentConfig.fogFar, targetConfig.fogFar, this.transitionProgress);
 
-    // Interpolate weather fog color
-    const currentColor = new THREE.Color(currentConfig.fogColor);
-    const targetColor = new THREE.Color(targetConfig.fogColor);
-    const weatherFogColor = currentColor.lerp(targetColor, this.transitionProgress);
+    // Interpolate weather fog color (reuse Color objects to avoid GC)
+    this.tempCurrentColor.setHex(currentConfig.fogColor);
+    this.tempTargetColor.setHex(targetConfig.fogColor);
+    this.tempCurrentColor.lerp(this.tempTargetColor, this.transitionProgress);
 
     // Apply time-of-day darkness to fog color
     // At night (darkness=0.85), fog becomes very dark
-    const nightColor = new THREE.Color(0x111122); // Very dark blue-black for night
-    const fogColor = weatherFogColor.clone().lerp(nightColor, this.timeDarkness);
+    this.tempCurrentColor.lerp(this.tempNightColor, this.timeDarkness);
 
     // Apply to scene fog
     if (this.fog) {
       this.fog.near = fogNear;
       this.fog.far = fogFar;
-      this.fog.color.copy(fogColor);
+      this.fog.color.copy(this.tempCurrentColor);
 
       // Also update background to match fog
       if (this.scene.background instanceof THREE.Color) {
-        this.scene.background.copy(fogColor);
+        this.scene.background.copy(this.tempCurrentColor);
       }
     }
   }
@@ -415,8 +420,7 @@ export class WeatherSystem {
           mesh.userData.originalColor = originalColor.clone();
         }
 
-        const snowColor = new THREE.Color(0xeeeeff); // Slightly blue-white snow
-        material.color.copy(originalColor).lerp(snowColor, snowIntensity * 0.7);
+        material.color.copy(originalColor).lerp(this.tempSnowColor, snowIntensity * 0.7);
       }
     }
   }

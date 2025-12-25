@@ -14,40 +14,40 @@ interface TimeConfig {
 
 const TIME_CONFIGS: Record<TimeState, TimeConfig> = {
   dawn: {
-    sunColor: 0xffccaa,
-    sunIntensity: 0.5,
-    ambientIntensity: 0.35,
-    skyColor: 0xffaa77,
-    fogColor: 0xddb088,
-    sunAngle: 15,
-    darkness: 0.3, // Early morning, slightly dim
+    sunColor: 0xffbb88,      // Warm pink-orange sunrise
+    sunIntensity: 0.6,
+    ambientIntensity: 0.3,
+    skyColor: 0xff9966,      // Vivid orange-pink sky
+    fogColor: 0xeebb99,      // Warm haze
+    sunAngle: 12,
+    darkness: 0.35,
   },
   noon: {
     sunColor: 0xffffff,
-    sunIntensity: 0.8,
-    ambientIntensity: 0.6,
+    sunIntensity: 1.0,       // Bright midday sun
+    ambientIntensity: 0.5,
     skyColor: 0x87ceeb,
     fogColor: 0x87ceeb,
-    sunAngle: 70,
-    darkness: 0, // Bright daylight
+    sunAngle: 75,
+    darkness: 0,
   },
   sunset: {
-    sunColor: 0xff8844,
-    sunIntensity: 0.5,
-    ambientIntensity: 0.4,
-    skyColor: 0xff6633,
-    fogColor: 0xcc7755,
-    sunAngle: 10,
-    darkness: 0.4, // Getting darker
+    sunColor: 0xff6622,      // Deep orange sun
+    sunIntensity: 0.8,       // Strong sunset glow
+    ambientIntensity: 0.25,  // Less ambient, more dramatic shadows
+    skyColor: 0xff4411,      // Vivid red-orange sky
+    fogColor: 0xdd6633,      // Orange-tinted fog
+    sunAngle: 5,             // Very low sun
+    darkness: 0.5,
   },
   night: {
-    sunColor: 0x4466aa,
-    sunIntensity: 0.15,
-    ambientIntensity: 0.15,
-    skyColor: 0x112244,
-    fogColor: 0x223355,
-    sunAngle: -20,
-    darkness: 0.85, // Very dark
+    sunColor: 0x223366,      // Deep blue moonlight
+    sunIntensity: 0.05,      // Very dim
+    ambientIntensity: 0.08,  // Very dark ambient
+    skyColor: 0x050510,      // Near black sky
+    fogColor: 0x0a0a15,      // Very dark fog
+    sunAngle: -30,
+    darkness: 0.95,          // Almost pitch black
   },
 };
 

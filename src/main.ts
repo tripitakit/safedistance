@@ -26,6 +26,11 @@ class SafeDistanceSimulator {
   // Track bridge kilometer text sprites for dynamic updates
   private bridgeTexts: THREE.Sprite[] = [];
 
+  // Streetlight system - only 4 dynamic lights that follow the player
+  private streetlightBulbs: THREE.Mesh[] = [];  // Visual bulbs on poles
+  private dynamicStreetlights: THREE.PointLight[] = [];  // Only 4 active lights near player
+  private readonly DYNAMIC_LIGHT_COUNT = 4;
+
   private lastTime: number = 0;
   private frameCount: number = 0; // For mirror render optimization (every 2nd frame)
 
@@ -125,14 +130,34 @@ class SafeDistanceSimulator {
   // Mirror meshes for brightness adjustment during high beam flashes
   private mirrorMeshes: THREE.Mesh[] = [];
 
-  // Oncoming traffic system (left lane)
-  private oncomingCars: THREE.Group[] = [];
+  // Oncoming traffic system (left lane) with object pooling
+  private oncomingCars: THREE.Group[] = [];  // Active cars in scene
+  private oncomingCarPool: THREE.Group[] = [];  // Inactive cars ready for reuse
   private oncomingCarPositions: number[] = []; // World positions (meters along road)
   private oncomingCarSpeeds: number[] = []; // m/s (positive = toward player)
   private readonly ONCOMING_LANE_X = -2.5;
   private readonly ONCOMING_SPAWN_AHEAD = 280; // Spawn just inside fog
   private readonly ONCOMING_DESPAWN_BEHIND = 30; // Remove after passing
   private readonly MIN_CAR_SPACING = 60; // Minimum gap between cars
+  private readonly ONCOMING_POOL_SIZE = 10; // Pre-allocated cars
+
+  // Shared geometries and materials for oncoming cars (avoid GC)
+  private sharedCarGeometries: {
+    body: THREE.BoxGeometry;
+    cabin: THREE.BoxGeometry;
+    windscreen: THREE.PlaneGeometry;
+    headlight: THREE.PlaneGeometry;
+    tire: THREE.CylinderGeometry;
+    rim: THREE.CylinderGeometry;
+  } | null = null;
+  private sharedCarMaterials: {
+    bodyColors: THREE.MeshStandardMaterial[];
+    cabin: THREE.MeshStandardMaterial;
+    windscreen: THREE.MeshStandardMaterial;
+    headlight: THREE.MeshBasicMaterial;
+    tire: THREE.MeshStandardMaterial;
+    rim: THREE.MeshStandardMaterial;
+  } | null = null;
 
   // Audio engine
   private audioEngine: AudioEngine;
@@ -244,6 +269,12 @@ class SafeDistanceSimulator {
     this.scene.add(this.environment);
     this.environment2 = this.createEnvironment();
     this.scene.add(this.environment2);
+
+    // Pre-allocate oncoming car pool to avoid runtime stutters
+    this.initOncomingCarPool();
+
+    // Initialize dynamic streetlights (only 4 PointLights that follow player)
+    this.initDynamicStreetlights();
 
     // Create vehicles with realistic parameters
     const vehicleConfig: VehicleConfig = {
@@ -935,117 +966,111 @@ class SafeDistanceSimulator {
     }
   }
 
+  /**
+   * Initialize shared geometries, materials, and pre-allocate car pool
+   * Called once at startup to avoid runtime allocations
+   */
+  private initOncomingCarPool(): void {
+    // Create shared geometries (once)
+    this.sharedCarGeometries = {
+      body: new THREE.BoxGeometry(2, 0.8, 4),
+      cabin: new THREE.BoxGeometry(1.8, 0.8, 2),
+      windscreen: new THREE.PlaneGeometry(1.6, 0.7),
+      headlight: new THREE.PlaneGeometry(0.5, 0.3),
+      tire: new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16),
+      rim: new THREE.CylinderGeometry(0.22, 0.22, 0.32, 16)
+    };
+
+    // Create shared materials (reused across all cars)
+    const carColors = [0xffffff, 0xcccccc, 0x888888, 0x333333, 0x2244aa, 0x882222];
+    this.sharedCarMaterials = {
+      bodyColors: carColors.map(color => new THREE.MeshStandardMaterial({
+        color, roughness: 0.3, metalness: 0.7
+      })),
+      cabin: new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.3, metalness: 0.6 }),
+      windscreen: new THREE.MeshStandardMaterial({
+        color: 0x88ccff, transparent: true, opacity: 0.5,
+        metalness: 0.9, roughness: 0.1, side: THREE.DoubleSide
+      }),
+      headlight: new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }),
+      tire: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }),
+      rim: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.3, metalness: 0.8 })
+    };
+
+    // Pre-allocate pool of cars
+    for (let i = 0; i < this.ONCOMING_POOL_SIZE; i++) {
+      const car = this.createOncomingCarModel();
+      car.visible = false;
+      this.oncomingCarPool.push(car);
+      // Don't add to scene yet - will be added when spawned
+    }
+  }
+
   private createOncomingCarModel(): THREE.Group {
     const car = new THREE.Group();
+    const geom = this.sharedCarGeometries!;
+    const mat = this.sharedCarMaterials!;
 
-    // Random car colors (common car colors)
-    const carColors = [0xffffff, 0xcccccc, 0x888888, 0x333333, 0x2244aa, 0x882222];
-    const bodyColor = carColors[Math.floor(Math.random() * carColors.length)];
+    // Random body color from pre-created materials
+    const bodyMaterial = mat.bodyColors[Math.floor(Math.random() * mat.bodyColors.length)];
 
     // Car body
-    // Body - raised to sit on wheels
-    const bodyGeometry = new THREE.BoxGeometry(2, 0.8, 4);
-    const bodyMaterial = new THREE.MeshStandardMaterial({
-      color: bodyColor,
-      roughness: 0.3,
-      metalness: 0.7
-    });
-    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    body.position.y = 0.8; // Raised: bottom at 0.4, on top of wheels
+    const body = new THREE.Mesh(geom.body, bodyMaterial);
+    body.position.y = 0.8;
     car.add(body);
 
     // Cabin
-    const cabinGeometry = new THREE.BoxGeometry(1.8, 0.8, 2);
-    const cabinMaterial = new THREE.MeshStandardMaterial({
-      color: 0x222222,
-      roughness: 0.3,
-      metalness: 0.6
-    });
-    const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
-    cabin.position.y = 1.6; // Raised to sit on body
+    const cabin = new THREE.Mesh(geom.cabin, mat.cabin);
+    cabin.position.y = 1.6;
     cabin.position.z = -0.5;
     car.add(cabin);
 
     // Front windscreen
-    const windscreenGeometry = new THREE.PlaneGeometry(1.6, 0.7);
-    const windscreenMaterial = new THREE.MeshStandardMaterial({
-      color: 0x88ccff,
-      transparent: true,
-      opacity: 0.5,
-      metalness: 0.9,
-      roughness: 0.1,
-      side: THREE.DoubleSide
-    });
-    const windscreen = new THREE.Mesh(windscreenGeometry, windscreenMaterial);
-    windscreen.position.set(0, 1.6, -1.55); // Raised with body
+    const windscreen = new THREE.Mesh(geom.windscreen, mat.windscreen);
+    windscreen.position.set(0, 1.6, -1.55);
     windscreen.rotation.x = -0.2;
     car.add(windscreen);
 
-    // Headlights at front (local -Z) - facing toward player
-    const headlightMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      side: THREE.DoubleSide
-    });
-
-    const leftHeadlight = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.5, 0.3),
-      headlightMaterial
-    );
-    leftHeadlight.position.set(-0.65, 0.7, -2.01); // Raised with body
+    // Headlights
+    const leftHeadlight = new THREE.Mesh(geom.headlight, mat.headlight);
+    leftHeadlight.position.set(-0.65, 0.7, -2.01);
     car.add(leftHeadlight);
 
-    const rightHeadlight = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.5, 0.3),
-      headlightMaterial
-    );
-    rightHeadlight.position.set(0.65, 0.7, -2.01); // Raised with body
+    const rightHeadlight = new THREE.Mesh(geom.headlight, mat.headlight);
+    rightHeadlight.position.set(0.65, 0.7, -2.01);
     car.add(rightHeadlight);
 
     // Point lights for headlight glow
     const leftLight = new THREE.PointLight(0xffffee, 2, 20);
-    leftLight.position.set(-0.5, 0.8, -2.5); // Raised with body
+    leftLight.position.set(-0.5, 0.8, -2.5);
     car.add(leftLight);
 
     const rightLight = new THREE.PointLight(0xffffee, 2, 20);
-    rightLight.position.set(0.5, 0.8, -2.5); // Raised with body
+    rightLight.position.set(0.5, 0.8, -2.5);
     car.add(rightLight);
 
-    // Wheels with tire and rim
-    const oncomingWheelPositions = [
+    // Wheels
+    const wheelPositions = [
       { pos: [-0.9, 0.4, 1.2], side: -1 },
       { pos: [0.9, 0.4, 1.2], side: 1 },
       { pos: [-0.9, 0.4, -1.2], side: -1 },
       { pos: [0.9, 0.4, -1.2], side: 1 }
     ];
 
-    oncomingWheelPositions.forEach(({ pos, side }) => {
-      // Tire (black cylinder)
-      const tireGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
-      const tireMaterial = new THREE.MeshStandardMaterial({
-        color: 0x1a1a1a,
-        roughness: 0.9
-      });
-      const tire = new THREE.Mesh(tireGeometry, tireMaterial);
+    wheelPositions.forEach(({ pos, side }) => {
+      const tire = new THREE.Mesh(geom.tire, mat.tire);
       tire.rotation.z = Math.PI / 2;
       tire.position.set(pos[0], pos[1], pos[2]);
       car.add(tire);
 
-      // Silver rim (visible hubcap)
-      const rimGeometry = new THREE.CylinderGeometry(0.22, 0.22, 0.32, 16);
-      const rimMaterial = new THREE.MeshStandardMaterial({
-        color: 0xaaaaaa,
-        roughness: 0.3,
-        metalness: 0.8
-      });
-      const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+      const rim = new THREE.Mesh(geom.rim, mat.rim);
       rim.rotation.z = Math.PI / 2;
       rim.position.set(pos[0] + side * 0.02, pos[1], pos[2]);
       car.add(rim);
     });
 
-    // Position in left lane and rotate to face player (front toward positive Z)
     car.position.x = this.ONCOMING_LANE_X;
-    car.rotation.y = Math.PI; // Rotate 180° so headlights face the player
+    car.rotation.y = Math.PI;
 
     return car;
   }
@@ -1062,12 +1087,20 @@ class SafeDistanceSimulator {
       }
     }
 
-    // Create new car
-    const car = this.createOncomingCarModel();
+    // Get car from pool or create new if pool empty
+    let car: THREE.Group;
+    if (this.oncomingCarPool.length > 0) {
+      car = this.oncomingCarPool.pop()!;
+      car.visible = true;
+    } else {
+      // Pool exhausted, create new (fallback, shouldn't happen often)
+      car = this.createOncomingCarModel();
+    }
 
     // Position ahead of player (in negative Z world space)
     const spawnPosition = playerPos + this.ONCOMING_SPAWN_AHEAD;
     car.position.z = -spawnPosition;
+    car.position.x = this.ONCOMING_LANE_X;
 
     // Random speed between 80-130 km/h (22-36 m/s)
     const speed = 22 + Math.random() * 14;
@@ -1100,9 +1133,13 @@ class SafeDistanceSimulator {
       // Add slight random weave for realism
       this.oncomingCars[i].position.x = this.ONCOMING_LANE_X + Math.sin(Date.now() * 0.001 + i) * 0.2;
 
-      // Remove if passed player - swap with last element and pop (O(1) instead of O(n))
+      // Return to pool if passed player - swap with last element and pop (O(1) instead of O(n))
       if (this.oncomingCarPositions[i] < playerPos - this.ONCOMING_DESPAWN_BEHIND) {
-        this.scene.remove(this.oncomingCars[i]);
+        const carToRecycle = this.oncomingCars[i];
+        this.scene.remove(carToRecycle);
+        carToRecycle.visible = false;
+        this.oncomingCarPool.push(carToRecycle); // Return to pool for reuse
+
         const lastIdx = this.oncomingCars.length - 1;
         if (i !== lastIdx) {
           // Swap with last element
@@ -1525,6 +1562,66 @@ class SafeDistanceSimulator {
     return bush;
   }
 
+  private createStreetlight(side: 'left' | 'right'): THREE.Group {
+    const light = new THREE.Group();
+    const xPos = side === 'left' ? -6 : 6;
+
+    // Pole
+    const poleGeometry = new THREE.CylinderGeometry(0.08, 0.1, 6, 8);
+    const poleMaterial = new THREE.MeshStandardMaterial({
+      color: 0x444444,
+      roughness: 0.4,
+      metalness: 0.6
+    });
+    const pole = new THREE.Mesh(poleGeometry, poleMaterial);
+    pole.position.set(xPos, 3, 0);
+    light.add(pole);
+
+    // Arm extending over road
+    const armLength = side === 'left' ? 2 : -2;
+    const armGeometry = new THREE.CylinderGeometry(0.05, 0.05, 2.2, 8);
+    const arm = new THREE.Mesh(armGeometry, poleMaterial);
+    arm.rotation.z = Math.PI / 2;
+    arm.position.set(xPos + armLength / 2, 5.8, 0);
+    light.add(arm);
+
+    // Lamp housing
+    const housingGeometry = new THREE.BoxGeometry(0.4, 0.15, 0.6);
+    const housingMaterial = new THREE.MeshStandardMaterial({
+      color: 0x333333,
+      roughness: 0.3,
+      metalness: 0.7
+    });
+    const housing = new THREE.Mesh(housingGeometry, housingMaterial);
+    housing.position.set(xPos + armLength, 5.7, 0);
+    light.add(housing);
+
+    // Light bulb - emissive glow (no PointLight to save performance)
+    const bulbGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+    const bulbMaterial = new THREE.MeshBasicMaterial({
+      color: 0x000000  // Will be set based on darkness
+    });
+    const bulb = new THREE.Mesh(bulbGeometry, bulbMaterial);
+    bulb.position.set(xPos + armLength, 5.55, 0);
+    light.add(bulb);
+
+    // Store bulb reference and its X offset for dynamic light positioning
+    (bulb as any).lightXOffset = xPos + armLength;
+    this.streetlightBulbs.push(bulb);
+
+    return light;
+  }
+
+  private initDynamicStreetlights(): void {
+    // Create only 4 PointLights that will move with the player
+    for (let i = 0; i < this.DYNAMIC_LIGHT_COUNT; i++) {
+      const light = new THREE.PointLight(0xffeeaa, 0, 40, 1.5);
+      light.position.set(0, 5.5, 0);
+      this.scene.add(light);
+      this.dynamicStreetlights.push(light);
+    }
+  }
+
   private createKilometerText(kmNumber: number): THREE.Sprite {
     // Create canvas for text
     const canvas = document.createElement('canvas');
@@ -1705,6 +1802,16 @@ class SafeDistanceSimulator {
 
     // Store bridges on the environment group for later updates
     (envGroup as any).bridges = bridges;
+
+    // Place streetlights every 50m along both sides of road
+    const streetlightSpacing = 50;
+    for (let z = -roadLength / 2; z < roadLength / 2; z += streetlightSpacing) {
+      // Alternate sides for staggered look
+      const side = (z / streetlightSpacing) % 2 === 0 ? 'left' : 'right';
+      const streetlight = this.createStreetlight(side as 'left' | 'right');
+      streetlight.position.z = z;
+      envGroup.add(streetlight);
+    }
 
     // Place objects along the road
     for (let z = -roadLength / 2; z < roadLength / 2; z += spacing) {
@@ -2818,8 +2925,30 @@ class SafeDistanceSimulator {
     this.weatherSystem.setPlayerPosition(this.playerVehicle.mesh.position);
     this.weatherSystem.setPlayerSpeed(this.playerVehicle.velocity); // For rain/snow rush effect
     // Headlights on when it's dark enough (for rain reflection effect)
-    this.weatherSystem.setHeadlights(this.timeOfDay.getDarkness() > 0.2);
+    const darkness = this.timeOfDay.getDarkness();
+    this.weatherSystem.setHeadlights(darkness > 0.2);
     this.weatherSystem.update(clampedDelta);
+
+    // Update streetlights based on darkness
+    const streetlightIntensity = Math.max(0, (darkness - 0.3) * 3); // Start at darkness 0.3, full at 0.6
+    const bulbColor = streetlightIntensity > 0 ? 0xffeeaa : 0x333333;
+
+    // Update all bulb colors (visual only, no PointLights)
+    for (const bulb of this.streetlightBulbs) {
+      (bulb.material as THREE.MeshBasicMaterial).color.setHex(bulbColor);
+    }
+
+    // Position dynamic lights near player (only 4 lights for performance)
+    const playerZ = -this.playerVehicle.position;
+    const lightSpacing = 25; // Space between dynamic lights
+    for (let i = 0; i < this.dynamicStreetlights.length; i++) {
+      const light = this.dynamicStreetlights[i];
+      light.intensity = streetlightIntensity * 1.5; // Brighter
+      // Alternate left/right, spread around player
+      const xPos = (i % 2 === 0) ? -4 : 4;
+      const zOffset = (i - 1.5) * lightSpacing;
+      light.position.set(xPos, 5.5, playerZ + zOffset);
+    }
 
     // Apply weather traction to all vehicles (affects braking in rain/wet conditions)
     const weatherTraction = this.weatherSystem.getTraction();

@@ -11,6 +11,7 @@ export interface HighScore {
 export class HighScoreManager {
   private db: Database | null = null;
   private initialized: boolean = false;
+  private saveScheduled: boolean = false;
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -54,11 +55,20 @@ export class HighScoreManager {
   }
 
   private saveToLocalStorage(): void {
-    if (!this.db) return;
+    if (!this.db || this.saveScheduled) return;
 
-    const data = this.db.export();
-    const json = JSON.stringify(Array.from(data));
-    localStorage.setItem('highscores_db', json);
+    // Defer save to next frame to avoid blocking render loop
+    this.saveScheduled = true;
+    setTimeout(() => {
+      if (!this.db) {
+        this.saveScheduled = false;
+        return;
+      }
+      const data = this.db.export();
+      const json = JSON.stringify(Array.from(data));
+      localStorage.setItem('highscores_db', json);
+      this.saveScheduled = false;
+    }, 0);
   }
 
   async addScore(playerName: string, score: number, distance: number): Promise<void> {
