@@ -42,12 +42,12 @@ const TIME_CONFIGS: Record<TimeState, TimeConfig> = {
   },
   night: {
     sunColor: 0x223366,      // Deep blue moonlight
-    sunIntensity: 0.05,      // Very dim
-    ambientIntensity: 0.08,  // Very dark ambient
-    skyColor: 0x050510,      // Near black sky
-    fogColor: 0x0a0a15,      // Very dark fog
+    sunIntensity: 0.03,      // Very dim
+    ambientIntensity: 0.05,  // Very dark ambient
+    skyColor: 0x000000,      // Pitch black sky
+    fogColor: 0x050508,      // Nearly black fog
     sunAngle: -30,
-    darkness: 0.95,          // Almost pitch black
+    darkness: 1.0,           // Pitch black
   },
 };
 
@@ -67,11 +67,62 @@ export class TimeOfDay {
   private autoCycleTimer: number = 0;
   private readonly AUTO_CYCLE_INTERVAL = 120; // seconds between time changes
 
+  // Starfield
+  private starfield: THREE.Points | null = null;
+  private starMaterial: THREE.PointsMaterial | null = null;
+  private weatherClear: boolean = true; // Stars only visible in clear weather
+
   constructor(scene: THREE.Scene, sunLight: THREE.DirectionalLight, ambientLight: THREE.AmbientLight) {
     this.scene = scene;
     this.sunLight = sunLight;
     this.ambientLight = ambientLight;
     this.fog = scene.fog as THREE.Fog;
+
+    this.createStarfield();
+  }
+
+  /**
+   * Create a starfield dome for night sky
+   */
+  private createStarfield(): void {
+    const starCount = 2000;
+    const positions = new Float32Array(starCount * 3);
+    const sizes = new Float32Array(starCount);
+
+    // Distribute stars on a hemisphere (only above horizon)
+    for (let i = 0; i < starCount; i++) {
+      // Random point on sphere using spherical coordinates
+      const theta = Math.random() * Math.PI * 2; // Azimuth
+      const phi = Math.random() * Math.PI * 0.45; // Elevation (0 to ~80 degrees above horizon)
+
+      const radius = 500; // Far from camera
+      const x = radius * Math.sin(phi) * Math.cos(theta);
+      const y = radius * Math.cos(phi); // Y is up
+      const z = radius * Math.sin(phi) * Math.sin(theta);
+
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = y;
+      positions[i * 3 + 2] = z;
+
+      // Random star sizes (some brighter than others)
+      sizes[i] = 0.5 + Math.random() * 1.5;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    this.starMaterial = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 1.5,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0,
+    });
+
+    this.starfield = new THREE.Points(geometry, this.starMaterial);
+    this.starfield.renderOrder = -1; // Render behind everything
+    this.scene.add(this.starfield);
   }
 
   /**
@@ -94,7 +145,7 @@ export class TimeOfDay {
   /**
    * Update time of day system
    */
-  update(deltaTime: number): void {
+  update(deltaTime: number, playerZ?: number): void {
     // Auto-cycle time independently
     if (this.autoCycleEnabled && this.transitionProgress >= 1) {
       this.autoCycleTimer += deltaTime;
@@ -103,6 +154,9 @@ export class TimeOfDay {
         this.cycleTime();
       }
     }
+
+    // Update star visibility based on darkness and weather
+    this.updateStars(playerZ);
 
     if (this.transitionProgress >= 1) return;
 
@@ -113,6 +167,30 @@ export class TimeOfDay {
     }
 
     this.updateLighting();
+  }
+
+  /**
+   * Update starfield visibility and position
+   */
+  private updateStars(playerZ?: number): void {
+    if (!this.starfield || !this.starMaterial) return;
+
+    // Stars fade in when darkness > 0.7 and weather is clear
+    const darkness = this.getDarkness();
+    const starVisibility = this.weatherClear ? Math.max(0, (darkness - 0.7) * 3.33) : 0;
+    this.starMaterial.opacity = starVisibility;
+
+    // Keep starfield centered on player (so stars stay in sky while driving)
+    if (playerZ !== undefined) {
+      this.starfield.position.z = playerZ;
+    }
+  }
+
+  /**
+   * Set weather clear state (stars only visible when clear)
+   */
+  setWeatherClear(isClear: boolean): void {
+    this.weatherClear = isClear;
   }
 
   private updateLighting(): void {

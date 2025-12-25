@@ -2926,7 +2926,13 @@ class SafeDistanceSimulator {
     this.updateParticles(clampedDelta);
 
     // Update time of day first (controls lighting and darkness)
-    this.timeOfDay.update(clampedDelta);
+    // Pass player Z position so starfield follows camera
+    const playerZ = -this.playerVehicle.position;
+    this.timeOfDay.update(clampedDelta, playerZ);
+
+    // Stars only visible in clear weather
+    const currentWeather = this.weatherSystem.getCurrentWeather();
+    this.timeOfDay.setWeatherClear(currentWeather === 'clear');
 
     // Update weather with time-of-day darkness (fog at night should be very dark)
     this.weatherSystem.setTimeDarkness(this.timeOfDay.getDarkness());
@@ -2947,7 +2953,7 @@ class SafeDistanceSimulator {
     }
 
     // Position dynamic lights near player (only 4 lights for performance)
-    const playerZ = -this.playerVehicle.position;
+    // playerZ already defined above for timeOfDay.update
     const lightSpacing = 25; // Space between dynamic lights
     for (let i = 0; i < this.dynamicStreetlights.length; i++) {
       const light = this.dynamicStreetlights[i];
