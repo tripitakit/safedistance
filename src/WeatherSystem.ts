@@ -375,8 +375,18 @@ export class WeatherSystem {
     const targetConfig = WEATHER_CONFIGS[this.targetWeather];
 
     // Interpolate fog values
-    const fogNear = THREE.MathUtils.lerp(currentConfig.fogNear, targetConfig.fogNear, this.transitionProgress);
-    const fogFar = THREE.MathUtils.lerp(currentConfig.fogFar, targetConfig.fogFar, this.transitionProgress);
+    let fogNear = THREE.MathUtils.lerp(currentConfig.fogNear, targetConfig.fogNear, this.transitionProgress);
+    let fogFar = THREE.MathUtils.lerp(currentConfig.fogFar, targetConfig.fogFar, this.transitionProgress);
+
+    // At night in clear weather, push fog much further so stars are visible
+    // Stars are at 500 units, so fog far needs to be well beyond that
+    const isClearWeather = this.currentWeather === 'clear' && this.targetWeather === 'clear';
+    if (isClearWeather && this.timeDarkness > 0.5) {
+      // Gradually push fog further as it gets darker (from 0.5 to 1.0 darkness)
+      const nightFactor = Math.min(1, (this.timeDarkness - 0.5) * 2);
+      fogNear = THREE.MathUtils.lerp(fogNear, 500, nightFactor);
+      fogFar = THREE.MathUtils.lerp(fogFar, 2000, nightFactor);
+    }
 
     // Interpolate weather fog color (reuse Color objects to avoid GC)
     this.tempCurrentColor.setHex(currentConfig.fogColor);
