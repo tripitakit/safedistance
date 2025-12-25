@@ -57,6 +57,7 @@ class SafeDistanceSimulator {
 
   // Game stats
   private score: number = 0;
+  private lastDisplayedScore: number = -1; // Cache to avoid string allocations
 
   // Game Over elements
   private gameOverElement: HTMLElement;
@@ -1615,8 +1616,9 @@ class SafeDistanceSimulator {
   private initDynamicStreetlights(): void {
     // Create only 4 PointLights that will move with the player
     for (let i = 0; i < this.DYNAMIC_LIGHT_COUNT; i++) {
-      const light = new THREE.PointLight(0xffeeaa, 0, 40, 1.5);
-      light.position.set(0, 5.5, 0);
+      // Warm orange color, larger range, lower decay for better road coverage
+      const light = new THREE.PointLight(0xffaa44, 0, 60, 1.2);
+      light.position.set(0, 4, 0); // Lower height for better road illumination
       this.scene.add(light);
       this.dynamicStreetlights.push(light);
     }
@@ -1948,8 +1950,9 @@ class SafeDistanceSimulator {
     const bridges1 = (this.environment as any).bridges || [];
     const bridges2 = (this.environment2 as any).bridges || [];
 
-    // Update first environment's bridges
-    bridges1.forEach((bridge: THREE.Group) => {
+    // Update first environment's bridges (for loop avoids closure allocation)
+    for (let i = 0; i < bridges1.length; i++) {
+      const bridge = bridges1[i];
       // Calculate actual world position of this bridge
       const bridgeWorldZ = bridge.position.z + this.environment.position.z;
       // Convert world position to km (negative Z = forward = positive km)
@@ -1962,10 +1965,11 @@ class SafeDistanceSimulator {
       } else {
         bridge.visible = false;
       }
-    });
+    }
 
-    // Update second environment's bridges
-    bridges2.forEach((bridge: THREE.Group) => {
+    // Update second environment's bridges (for loop avoids closure allocation)
+    for (let i = 0; i < bridges2.length; i++) {
+      const bridge = bridges2[i];
       // Calculate actual world position of this bridge
       const bridgeWorldZ = bridge.position.z + this.environment2.position.z;
       // Convert world position to km (negative Z = forward = positive km)
@@ -1978,7 +1982,7 @@ class SafeDistanceSimulator {
       } else {
         bridge.visible = false;
       }
-    });
+    }
   }
 
   private updateHUD(): void {
@@ -2001,8 +2005,12 @@ class SafeDistanceSimulator {
       const pointsPerFrame = (speed / 3600) * proximityMultiplier * speedCoefficient * 10;
       this.score += pointsPerFrame;
     }
-    const roundedScore = Math.round(this.score).toString();
-    this.scoreOverlayElement.textContent = roundedScore;
+    // Only update DOM when score actually changes (avoids string allocation every frame)
+    const roundedScore = Math.round(this.score);
+    if (roundedScore !== this.lastDisplayedScore) {
+      this.lastDisplayedScore = roundedScore;
+      this.scoreOverlayElement.textContent = roundedScore.toString();
+    }
 
     // Update timed warnings based on distance state changes
     const currentState = distance < safeDistance && distance > 0 ? 'danger' : 'safe';
@@ -2931,7 +2939,7 @@ class SafeDistanceSimulator {
 
     // Update streetlights based on darkness
     const streetlightIntensity = Math.max(0, (darkness - 0.3) * 3); // Start at darkness 0.3, full at 0.6
-    const bulbColor = streetlightIntensity > 0 ? 0xffeeaa : 0x333333;
+    const bulbColor = streetlightIntensity > 0 ? 0xffaa44 : 0x333333; // Warm orange when lit
 
     // Update all bulb colors (visual only, no PointLights)
     for (const bulb of this.streetlightBulbs) {
@@ -2943,11 +2951,11 @@ class SafeDistanceSimulator {
     const lightSpacing = 25; // Space between dynamic lights
     for (let i = 0; i < this.dynamicStreetlights.length; i++) {
       const light = this.dynamicStreetlights[i];
-      light.intensity = streetlightIntensity * 1.5; // Brighter
+      light.intensity = streetlightIntensity * 2.5; // Strong warm glow
       // Alternate left/right, spread around player
       const xPos = (i % 2 === 0) ? -4 : 4;
       const zOffset = (i - 1.5) * lightSpacing;
-      light.position.set(xPos, 5.5, playerZ + zOffset);
+      light.position.set(xPos, 4, playerZ + zOffset); // Lower for road illumination
     }
 
     // Apply weather traction to all vehicles (affects braking in rain/wet conditions)
