@@ -85,6 +85,32 @@
       <!-- Speedometer Gauge -->
       <canvas id="speedometer" class="speedometer" width="200" height="200"></canvas>
 
+      <!-- Mobile Phone Distraction -->
+      <div id="phoneDistraction" class="phone-distraction">
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="phone-status-bar">
+              <span class="phone-time">12:34</span>
+              <span class="phone-battery">🔋 87%</span>
+            </div>
+            <div class="phone-content">
+              <div id="phoneNotification" class="phone-notification hidden">
+                <div class="notification-app-icon">💬</div>
+                <div class="notification-text">
+                  <div class="notification-title" id="notificationTitle">Messages</div>
+                  <div class="notification-body" id="notificationBody">New message received</div>
+                </div>
+              </div>
+              <div class="phone-wallpaper">
+                <div class="phone-clock" id="phoneClock">12:34</div>
+                <div class="phone-date">Friday, Jan 2</div>
+              </div>
+            </div>
+            <div class="phone-home-bar"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Mobile Touch Controls -->
       <div id="mobileControls" class="mobile-controls hidden">
         <button id="brakeBtn" class="touch-btn brake-btn">BRAKE</button>

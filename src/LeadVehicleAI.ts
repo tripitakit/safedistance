@@ -15,15 +15,36 @@ export class LeadVehicleAI {
 
   // Speed limits and patterns
   private readonly MIN_SPEED = 30; // km/h
-  private readonly CRUISE_SPEED = 130; // km/h
+  private currentSpeedLimit: number = 70; // Current road speed limit (start low, increases with signs)
+  private readonly SPEED_LIMIT_EXCEED_FACTOR = 1.2; // Can exceed limit by 20%
 
   // Weather-based visibility/traction (affects braking behavior)
   private traction: number = 1.0;
 
   constructor(vehicle: Vehicle) {
     this.vehicle = vehicle;
-    this.targetSpeed = this.CRUISE_SPEED;
+    this.targetSpeed = this.getMaxAllowedSpeed();
     this.vehicle.setVelocity(this.MIN_SPEED);
+  }
+
+  /**
+   * Get the maximum speed the lead vehicle will drive at
+   * Based on current speed limit with possibility to exceed by 20%
+   */
+  private getMaxAllowedSpeed(): number {
+    return this.currentSpeedLimit * this.SPEED_LIMIT_EXCEED_FACTOR;
+  }
+
+  /**
+   * Set the current speed limit from road signs
+   */
+  public setSpeedLimit(limit: number): void {
+    this.currentSpeedLimit = limit;
+    // Adjust target speed if currently exceeding new limit
+    const maxAllowed = this.getMaxAllowedSpeed();
+    if (this.targetSpeed > maxAllowed) {
+      this.targetSpeed = maxAllowed;
+    }
   }
 
   /**
@@ -100,11 +121,15 @@ export class LeadVehicleAI {
         this.brakingIntensity = minIntensity + Math.random() * (1.0 - minIntensity);
         this.stateTimer = 0;
       } else {
-        // Change target speed (sometimes exceed speed limit)
+        // Change target speed (sometimes push toward max allowed speed)
+        const maxAllowed = this.getMaxAllowedSpeed();
+        const baseSpeed = this.currentSpeedLimit;
         if (Math.random() > 0.7) {
-          this.targetSpeed = this.CRUISE_SPEED + Math.random() * 50; // 130-180 km/h
+          // Push toward max (up to 20% over limit)
+          this.targetSpeed = baseSpeed + Math.random() * (maxAllowed - baseSpeed);
         } else {
-          this.targetSpeed = this.CRUISE_SPEED;
+          // Stay around the limit
+          this.targetSpeed = baseSpeed;
         }
         this.state = AIState.ACCELERATING;
         this.stateTimer = 0;
@@ -125,7 +150,12 @@ export class LeadVehicleAI {
     if (this.stateTimer > brakingDuration || currentSpeed < this.MIN_SPEED) {
       // Stop braking, start accelerating again
       this.state = AIState.ACCELERATING;
-      this.targetSpeed = this.CRUISE_SPEED + Math.random() * (Math.random() > 0.7 ? 50 : 0);
+      const maxAllowed = this.getMaxAllowedSpeed();
+      const baseSpeed = this.currentSpeedLimit;
+      // Sometimes push toward max speed, otherwise stay at limit
+      this.targetSpeed = Math.random() > 0.7
+        ? baseSpeed + Math.random() * (maxAllowed - baseSpeed)
+        : baseSpeed;
       this.stateTimer = 0;
       this.vehicle.setBraking(0);
     }

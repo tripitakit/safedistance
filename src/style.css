@@ -1382,4 +1382,162 @@ body {
     font-size: 18px;
     margin: 15px 0;
   }
+
+  /* Hide phone on very small screens */
+  .phone-distraction {
+    display: none;
+  }
+}
+
+/* ============================================
+   MOBILE PHONE DISTRACTION
+   ============================================ */
+.phone-distraction {
+  position: fixed;
+  right: 20px;
+  bottom: 100px;
+  z-index: 100;
+  pointer-events: none;
+  transform: rotate(-5deg);
+  transition: transform 0.3s ease;
+}
+
+.phone-distraction.notification-active {
+  transform: rotate(-5deg) scale(1.02);
+  animation: phoneVibrate 0.1s ease-in-out 3;
+}
+
+@keyframes phoneVibrate {
+  0%, 100% { transform: rotate(-5deg) translateX(0); }
+  25% { transform: rotate(-5deg) translateX(-2px); }
+  75% { transform: rotate(-5deg) translateX(2px); }
+}
+
+.phone-frame {
+  width: 120px;
+  height: 220px;
+  background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+  border-radius: 20px;
+  padding: 8px;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+}
+
+.phone-screen {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.phone-status-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px;
+  font-size: 9px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.phone-content {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.phone-wallpaper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(180deg, #0f3460 0%, #16213e 50%, #1a1a2e 100%);
+}
+
+.phone-clock {
+  font-size: 28px;
+  font-weight: 300;
+  color: #fff;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.phone-date {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 4px;
+}
+
+.phone-home-bar {
+  width: 40%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  margin: 6px auto;
+}
+
+/* Notification Banner */
+.phone-notification {
+  position: absolute;
+  top: 8px;
+  left: 6px;
+  right: 6px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 10px;
+  padding: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  transform: translateY(-100px);
+  opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  z-index: 10;
+}
+
+.phone-notification.visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.phone-notification.hidden {
+  transform: translateY(-100px);
+  opacity: 0;
+}
+
+.notification-app-icon {
+  font-size: 20px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #34c759, #28a745);
+  border-radius: 6px;
+}
+
+.notification-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-title {
+  font-size: 9px;
+  font-weight: 600;
+  color: #333;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.notification-body {
+  font-size: 8px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }

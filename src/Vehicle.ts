@@ -271,26 +271,53 @@ export class Vehicle {
       group.add(centerGroundLight);
     }
 
-    // Add brake lights, rear windscreen, and license plate to LEAD vehicle only (yellow car)
+    // Add tail lights, brake lights, rear windscreen, and license plate to LEAD vehicle only (yellow car)
     if (color === 0xffff00) {
-      const brakeLightGeometry = new THREE.BoxGeometry(0.4, 0.3, 0.15);
-      const brakeLightMaterial = new THREE.MeshStandardMaterial({
-        color: 0x330000,
-        emissive: 0x000000,
-        emissiveIntensity: 2
+      // TAIL LIGHTS (always on, dim red)
+      const tailLightGeometry = new THREE.BoxGeometry(0.4, 0.3, 0.15);
+      const tailLightMaterial = new THREE.MeshStandardMaterial({
+        color: 0x660000,
+        emissive: 0x440000, // Always slightly glowing
+        emissiveIntensity: 1.0
       });
 
-      // Left brake light (at rear of car - positive Z) - raised with body
-      const leftBrakeLight = new THREE.Mesh(brakeLightGeometry, brakeLightMaterial.clone());
-      leftBrakeLight.position.set(-0.8, 1.0, 2.1);
-      leftBrakeLight.userData.isBrakeLight = true;
-      group.add(leftBrakeLight);
+      // Left tail light (at rear of car - positive Z) - raised with body
+      const leftTailLight = new THREE.Mesh(tailLightGeometry, tailLightMaterial.clone());
+      leftTailLight.position.set(-0.8, 1.0, 2.1);
+      leftTailLight.userData.isBrakeLight = true;
+      leftTailLight.userData.isTailLight = true;
+      group.add(leftTailLight);
 
-      // Right brake light (at rear of car - positive Z) - raised with body
-      const rightBrakeLight = new THREE.Mesh(brakeLightGeometry, brakeLightMaterial.clone());
-      rightBrakeLight.position.set(0.8, 1.0, 2.1);
-      rightBrakeLight.userData.isBrakeLight = true;
-      group.add(rightBrakeLight);
+      // Right tail light (at rear of car - positive Z) - raised with body
+      const rightTailLight = new THREE.Mesh(tailLightGeometry, tailLightMaterial.clone());
+      rightTailLight.position.set(0.8, 1.0, 2.1);
+      rightTailLight.userData.isBrakeLight = true;
+      rightTailLight.userData.isTailLight = true;
+      group.add(rightTailLight);
+
+      // CENTER HIGH-MOUNT BRAKE LIGHT (third brake light above rear window)
+      const centerBrakeLightGeometry = new THREE.BoxGeometry(0.6, 0.12, 0.08);
+      const centerBrakeLightMaterial = new THREE.MeshStandardMaterial({
+        color: 0x660000,
+        emissive: 0x330000, // Dim when not braking
+        emissiveIntensity: 0.8
+      });
+      const centerBrakeLight = new THREE.Mesh(centerBrakeLightGeometry, centerBrakeLightMaterial);
+      centerBrakeLight.position.set(0, 2.05, 0.6); // Above rear window
+      centerBrakeLight.userData.isBrakeLight = true;
+      centerBrakeLight.userData.isCenterBrakeLight = true;
+      group.add(centerBrakeLight);
+
+      // Point lights for tail light glow (always on, dim)
+      const leftTailGlow = new THREE.PointLight(0xff2200, 0.5, 8);
+      leftTailGlow.position.set(-0.8, 1.0, 2.3);
+      leftTailGlow.userData.isTailGlow = true;
+      group.add(leftTailGlow);
+
+      const rightTailGlow = new THREE.PointLight(0xff2200, 0.5, 8);
+      rightTailGlow.position.set(0.8, 1.0, 2.3);
+      rightTailGlow.userData.isTailGlow = true;
+      group.add(rightTailGlow);
 
       // Rear windscreen (back window) - angled glass panel - raised with cabin
       const rearWindowGeometry = new THREE.PlaneGeometry(1.6, 0.7);
@@ -356,27 +383,51 @@ export class Vehicle {
 
   private updateWheelFeedback(): void {
     let wheelEmissiveColor = new THREE.Color(0x000000);
-    let brakeLightEmissive = new THREE.Color(0x000000);
+
+    // Tail lights base emissive (always on)
+    const tailLightBaseEmissive = new THREE.Color(0x440000);
+    // Brake light emissive (when braking - much brighter)
+    const brakingEmissive = new THREE.Color(0xff0000);
 
     // Priority: braking (red) overrides acceleration (blue)
     if (this.currentBraking > 0) {
       // Red glow for braking (intensity based on brake pressure)
       wheelEmissiveColor = new THREE.Color(0xff0000).multiplyScalar(this.currentBraking * 2);
-      // Bright red for brake lights
-      brakeLightEmissive = new THREE.Color(0xff0000).multiplyScalar(this.currentBraking * 3);
     } else if (this.currentAcceleration > 0) {
       // Blue glow for acceleration (only on wheels)
       wheelEmissiveColor = new THREE.Color(0x0088ff).multiplyScalar(this.currentAcceleration * 1.5);
     }
 
-    // Update all wheels and brake lights
+    // Calculate brake light intensity
+    const brakeIntensity = this.currentBraking;
+    const tailGlowIntensity = brakeIntensity > 0 ? 2.0 + brakeIntensity * 3.0 : 0.5; // 0.5 base, up to 5.0 when braking
+
+    // Update all wheels, brake lights, and tail glow lights
     this.mesh.children.forEach(child => {
       if (child instanceof THREE.Mesh) {
         if (child.userData.isWheel) {
           (child.material as THREE.MeshStandardMaterial).emissive = wheelEmissiveColor;
         } else if (child.userData.isBrakeLight) {
-          (child.material as THREE.MeshStandardMaterial).emissive = brakeLightEmissive;
+          const material = child.material as THREE.MeshStandardMaterial;
+          if (brakeIntensity > 0) {
+            // Braking: bright red, intensity based on brake pressure
+            material.emissive = brakingEmissive.clone().multiplyScalar(brakeIntensity * 2);
+            material.emissiveIntensity = 2 + brakeIntensity * 3;
+          } else {
+            // Not braking: tail lights stay on at base level
+            if (child.userData.isTailLight) {
+              material.emissive = tailLightBaseEmissive;
+              material.emissiveIntensity = 1.0;
+            } else if (child.userData.isCenterBrakeLight) {
+              // Center brake light is dimmer when not braking
+              material.emissive = new THREE.Color(0x330000);
+              material.emissiveIntensity = 0.8;
+            }
+          }
         }
+      } else if (child instanceof THREE.PointLight && child.userData.isTailGlow) {
+        // Update tail glow point lights intensity
+        child.intensity = tailGlowIntensity;
       } else if (child instanceof THREE.Group && child.userData.isWheelGroup) {
         // Traverse into wheel groups to find the rim with isWheel marker
         child.children.forEach(wheelPart => {

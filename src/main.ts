@@ -100,6 +100,37 @@ class SafeDistanceSimulator {
   // High score manager
   private highScoreManager!: HighScoreManager;
 
+  // Phone distraction system
+  private phoneElement!: HTMLElement;
+  private phoneNotificationElement!: HTMLElement;
+  private notificationTitleElement!: HTMLElement;
+  private notificationBodyElement!: HTMLElement;
+  private phoneClockElement!: HTMLElement;
+  private phoneNotificationTimer: number = 0;
+  private phoneNotificationActive: boolean = false;
+  private readonly PHONE_MIN_INTERVAL = 25; // Minimum seconds between notifications
+  private readonly PHONE_MAX_INTERVAL = 50; // Maximum seconds between notifications
+  private phoneNextNotificationTime: number = 0;
+
+  // Notification messages pool
+  private readonly phoneMessages = [
+    { title: 'WhatsApp', body: 'Mom: Call me when you can 💕', icon: '💬' },
+    { title: 'Instagram', body: 'liked your photo 📸', icon: '📷' },
+    { title: 'Messages', body: 'Where are you? Running late?', icon: '💬' },
+    { title: 'Email', body: 'Your order has shipped! 📦', icon: '✉️' },
+    { title: 'Twitter', body: 'You have 5 new notifications', icon: '🐦' },
+    { title: 'Calendar', body: 'Meeting in 30 minutes', icon: '📅' },
+    { title: 'News', body: 'Breaking: Major traffic jam ahead', icon: '📰' },
+    { title: 'Spotify', body: 'Your Daily Mix is ready 🎵', icon: '🎵' },
+    { title: 'Banking', body: 'Payment received: €150.00', icon: '🏦' },
+    { title: 'Weather', body: 'Rain expected in 2 hours ☔', icon: '🌧️' },
+    { title: 'Messenger', body: 'Hey! Are you driving? 🚗', icon: '💬' },
+    { title: 'TikTok', body: 'Your video is trending! 🔥', icon: '🎬' },
+  ];
+
+  // Phone notification audio
+  private phoneAudioContext: AudioContext | null = null;
+
   // Game state
   private isGameOver: boolean = false;
   private isCrashing: boolean = false; // During crash animation
@@ -140,7 +171,7 @@ class SafeDistanceSimulator {
   private readonly ONCOMING_SPAWN_AHEAD = 280; // Spawn just inside fog
   private readonly ONCOMING_DESPAWN_BEHIND = 30; // Remove after passing
   private readonly MIN_CAR_SPACING = 60; // Minimum gap between cars
-  private readonly ONCOMING_POOL_SIZE = 10; // Pre-allocated cars
+  private readonly ONCOMING_POOL_SIZE = 15; // Pre-allocated cars (increased to prevent fallback)
 
   // Shared geometries and materials for oncoming cars (avoid GC)
   private sharedCarGeometries: {
@@ -158,6 +189,137 @@ class SafeDistanceSimulator {
     headlight: THREE.MeshBasicMaterial;
     tire: THREE.MeshStandardMaterial;
     rim: THREE.MeshStandardMaterial;
+  } | null = null;
+
+  // Vehicle pools for commercial vehicles (increased sizes to prevent fallback)
+  private oncomingVanPool: THREE.Group[] = [];
+  private oncomingTruckPool: THREE.Group[] = [];
+  private oncomingSemiPool: THREE.Group[] = [];
+  private readonly VAN_POOL_SIZE = 6;
+  private readonly TRUCK_POOL_SIZE = 4;
+  private readonly SEMI_POOL_SIZE = 3;
+
+  // Shared geometries and materials for vans
+  private sharedVanGeometries: {
+    body: THREE.BoxGeometry;
+    cabin: THREE.BoxGeometry;
+    windscreen: THREE.PlaneGeometry;
+    headlight: THREE.PlaneGeometry;
+    wheel: THREE.CylinderGeometry;
+    rim: THREE.CylinderGeometry;
+  } | null = null;
+  private sharedVanMaterials: {
+    bodyColors: THREE.MeshStandardMaterial[];
+    tire: THREE.MeshStandardMaterial;
+    rim: THREE.MeshStandardMaterial;
+  } | null = null;
+
+  // Shared geometries and materials for trucks
+  private sharedTruckGeometries: {
+    cabin: THREE.BoxGeometry;
+    cargo: THREE.BoxGeometry;
+    windscreen: THREE.PlaneGeometry;
+    headlight: THREE.PlaneGeometry;
+    wheel: THREE.CylinderGeometry;
+    rim: THREE.CylinderGeometry;
+  } | null = null;
+  private sharedTruckMaterials: {
+    cabinColors: THREE.MeshStandardMaterial[];
+    cargo: THREE.MeshStandardMaterial;
+    tire: THREE.MeshStandardMaterial;
+    rim: THREE.MeshStandardMaterial;
+  } | null = null;
+
+  // Shared geometries and materials for semi-trucks
+  private sharedSemiGeometries: {
+    cabin: THREE.BoxGeometry;
+    sleeper: THREE.BoxGeometry;
+    trailer: THREE.BoxGeometry;
+    windscreen: THREE.PlaneGeometry;
+    headlight: THREE.PlaneGeometry;
+    wheel: THREE.CylinderGeometry;
+    rim: THREE.CylinderGeometry;
+  } | null = null;
+  private sharedSemiMaterials: {
+    cabinColors: THREE.MeshStandardMaterial[];
+    trailerColors: THREE.MeshStandardMaterial[];
+    chrome: THREE.MeshStandardMaterial;
+    tire: THREE.MeshStandardMaterial;
+    rim: THREE.MeshStandardMaterial;
+  } | null = null;
+
+  // Pre-cached speed limit sign textures
+  private speedLimitTextures: Map<number, THREE.CanvasTexture> = new Map();
+
+  // Shared geometries and materials for environment objects
+  private sharedEnvGeometries: {
+    // Trees
+    treeTrunk: THREE.CylinderGeometry;
+    treeFoliage1: THREE.SphereGeometry;
+    treeFoliage2: THREE.SphereGeometry;
+    treeFoliage3: THREE.SphereGeometry;
+    // Residential house
+    houseWall: THREE.BoxGeometry;
+    houseRoof: THREE.ConeGeometry;
+    houseDoor: THREE.BoxGeometry;
+    houseWindow: THREE.BoxGeometry;
+    // Commercial buildings
+    shopBody: THREE.BoxGeometry;
+    shopAwning: THREE.BoxGeometry;
+    shopWindow: THREE.BoxGeometry;
+    warehouseBody: THREE.BoxGeometry;
+    warehouseRoof: THREE.BoxGeometry;
+    warehouseDoor: THREE.BoxGeometry;
+    // Industrial buildings
+    factoryBody: THREE.BoxGeometry;
+    factoryChimney: THREE.CylinderGeometry;
+    factoryDoor: THREE.BoxGeometry;
+    siloBody: THREE.CylinderGeometry;
+    siloTop: THREE.ConeGeometry;
+    // Bushes
+    bushMain: THREE.SphereGeometry;
+    bushSmall: THREE.SphereGeometry;
+  } | null = null;
+  private sharedEnvMaterials: {
+    treeTrunk: THREE.MeshStandardMaterial;
+    treeFoliage: THREE.MeshStandardMaterial;
+    houseWall: THREE.MeshStandardMaterial;
+    houseRoof: THREE.MeshStandardMaterial;
+    houseDoor: THREE.MeshStandardMaterial;
+    houseWindow: THREE.MeshStandardMaterial;
+    // Commercial
+    shopWallColors: THREE.MeshStandardMaterial[];
+    shopAwningColors: THREE.MeshStandardMaterial[];
+    warehouseMetal: THREE.MeshStandardMaterial;
+    warehouseDoor: THREE.MeshStandardMaterial;
+    // Industrial
+    factoryWall: THREE.MeshStandardMaterial;
+    factoryChimney: THREE.MeshStandardMaterial;
+    siloMetal: THREE.MeshStandardMaterial;
+    bush: THREE.MeshStandardMaterial;
+  } | null = null;
+
+  // Shared geometries and materials for streetlights
+  private sharedStreetlightGeometries: {
+    pole: THREE.CylinderGeometry;
+    arm: THREE.CylinderGeometry;
+    housing: THREE.BoxGeometry;
+    bulb: THREE.SphereGeometry;
+  } | null = null;
+  private sharedStreetlightMaterials: {
+    pole: THREE.MeshStandardMaterial;
+    housing: THREE.MeshStandardMaterial;
+  } | null = null;
+
+  // Shared geometries and materials for speed limit signs
+  private sharedSignGeometries: {
+    pole: THREE.CylinderGeometry;
+    face: THREE.PlaneGeometry;
+    back: THREE.CircleGeometry;
+  } | null = null;
+  private sharedSignMaterials: {
+    pole: THREE.MeshStandardMaterial;
+    back: THREE.MeshStandardMaterial;
   } | null = null;
 
   // Audio engine
@@ -245,6 +407,14 @@ class SafeDistanceSimulator {
     this.highScoreManager = new HighScoreManager();
     this.highScoreManager.initialize().catch(err => console.error('Failed to initialize high scores:', err));
 
+    // Initialize phone distraction elements
+    this.phoneElement = document.getElementById('phoneDistraction')!;
+    this.phoneNotificationElement = document.getElementById('phoneNotification')!;
+    this.notificationTitleElement = document.getElementById('notificationTitle')!;
+    this.notificationBodyElement = document.getElementById('notificationBody')!;
+    this.phoneClockElement = document.getElementById('phoneClock')!;
+    this.initPhoneSystem();
+
     // Setup restart button
     this.restartBtn.addEventListener('click', () => this.restart());
 
@@ -266,13 +436,15 @@ class SafeDistanceSimulator {
     this.scene.add(this.road);
 
     // Create two environment copies for seamless infinite scrolling
+    // Pre-allocate all shared geometries and textures to avoid runtime stutters
+    this.initEnvironmentGeometries();
+    this.initSpeedLimitTextures();
+    this.initVehiclePools();
+
     this.environment = this.createEnvironment();
     this.scene.add(this.environment);
     this.environment2 = this.createEnvironment();
     this.scene.add(this.environment2);
-
-    // Pre-allocate oncoming car pool to avoid runtime stutters
-    this.initOncomingCarPool();
 
     // Initialize dynamic streetlights (only 4 PointLights that follow player)
     this.initDynamicStreetlights();
@@ -967,12 +1139,373 @@ class SafeDistanceSimulator {
     }
   }
 
+  // Pre-cached truck decoration textures
+  private truckDecorationTextures: {
+    tir: THREE.CanvasTexture;
+    logos: THREE.CanvasTexture[];
+  } | null = null;
+
+  // Store canvas elements to prevent garbage collection
+  private speedLimitCanvases: Map<number, HTMLCanvasElement> = new Map();
+
   /**
-   * Initialize shared geometries, materials, and pre-allocate car pool
+   * Pre-generate speed limit sign textures to avoid runtime canvas/GPU uploads
+   */
+  private initSpeedLimitTextures(): void {
+    const speedLimits = [70, 90, 110, 130];
+
+    speedLimits.forEach(limit => {
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d')!;
+      canvas.width = 256;
+      canvas.height = 256;
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      const radius = 120;
+
+      // Clear with transparency
+      context.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw white circle background
+      context.beginPath();
+      context.arc(cx, cy, radius, 0, Math.PI * 2);
+      context.fillStyle = '#ffffff';
+      context.fill();
+
+      // Draw red border ring
+      context.beginPath();
+      context.arc(cx, cy, radius, 0, Math.PI * 2);
+      context.lineWidth = 20;
+      context.strokeStyle = '#cc0000';
+      context.stroke();
+
+      // Draw black number centered
+      // Use heavier font weight and slight offset for better visual centering
+      context.font = '900 110px Arial Black, Arial';
+      context.fillStyle = '#000000';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      // Add small vertical offset (+8px) to visually center the text
+      context.fillText(limit.toString(), cx, cy + 8);
+
+      // Store canvas to prevent garbage collection
+      this.speedLimitCanvases.set(limit, canvas);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.colorSpace = THREE.SRGBColorSpace;
+      // Flip horizontally to compensate for sign rotation facing player
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.repeat.x = -1;
+      texture.offset.x = 1;
+      texture.needsUpdate = true;
+
+      this.speedLimitTextures.set(limit, texture);
+    });
+
+    // Pre-generate truck decoration textures
+    this.initTruckDecorationTextures();
+  }
+
+  // Store truck decoration canvases to prevent garbage collection
+  private truckDecorationCanvases: HTMLCanvasElement[] = [];
+
+  /**
+   * Pre-generate fake company logos and TIR plates for semi-trucks
+   */
+  private initTruckDecorationTextures(): void {
+    // TIR plate (blue background, white text)
+    const tirCanvas = document.createElement('canvas');
+    const tirCtx = tirCanvas.getContext('2d')!;
+    tirCanvas.width = 128;
+    tirCanvas.height = 64;
+    tirCtx.fillStyle = '#003399';
+    tirCtx.fillRect(0, 0, 128, 64);
+    tirCtx.strokeStyle = '#ffffff';
+    tirCtx.lineWidth = 3;
+    tirCtx.strokeRect(3, 3, 122, 58);
+    tirCtx.font = 'bold 40px Arial';
+    tirCtx.fillStyle = '#ffffff';
+    tirCtx.textAlign = 'center';
+    tirCtx.textBaseline = 'middle';
+    tirCtx.fillText('TIR', 64, 32);
+    this.truckDecorationCanvases.push(tirCanvas);
+    const tirTexture = new THREE.CanvasTexture(tirCanvas);
+    tirTexture.minFilter = THREE.LinearFilter;
+    tirTexture.needsUpdate = true;
+
+    // Fake company logos
+    const logos: THREE.CanvasTexture[] = [];
+    const companyNames = ['EUROMAX', 'TRANSCARGO', 'SPEEDLINE', 'LOGISTICA', 'TRANSEUROPA'];
+    const logoColors = ['#cc2222', '#2255aa', '#22aa55', '#dd6600', '#8844aa'];
+
+    companyNames.forEach((name, i) => {
+      const logoCanvas = document.createElement('canvas');
+      const logoCtx = logoCanvas.getContext('2d')!;
+      logoCanvas.width = 256;
+      logoCanvas.height = 64;
+
+      // Background stripe
+      logoCtx.fillStyle = logoColors[i];
+      logoCtx.fillRect(0, 10, 256, 44);
+
+      // Company name
+      logoCtx.font = 'bold 32px Arial';
+      logoCtx.fillStyle = '#ffffff';
+      logoCtx.textAlign = 'center';
+      logoCtx.textBaseline = 'middle';
+      logoCtx.fillText(name, 128, 32);
+
+      this.truckDecorationCanvases.push(logoCanvas);
+      const logoTexture = new THREE.CanvasTexture(logoCanvas);
+      logoTexture.minFilter = THREE.LinearFilter;
+      logoTexture.needsUpdate = true;
+      logos.push(logoTexture);
+    });
+
+    this.truckDecorationTextures = { tir: tirTexture, logos };
+  }
+
+  /**
+   * Pre-create shared geometries and materials for environment objects
+   * This eliminates per-object geometry allocation during gameplay
+   */
+  private initEnvironmentGeometries(): void {
+    // All environment geometries
+    this.sharedEnvGeometries = {
+      // Trees
+      treeTrunk: new THREE.CylinderGeometry(0.3, 0.4, 4, 8),
+      treeFoliage1: new THREE.SphereGeometry(2, 8, 8),
+      treeFoliage2: new THREE.SphereGeometry(1.5, 8, 8),
+      treeFoliage3: new THREE.SphereGeometry(1, 8, 8),
+      // Residential house
+      houseWall: new THREE.BoxGeometry(6, 4, 6),
+      houseRoof: new THREE.ConeGeometry(4.5, 2.5, 4),
+      houseDoor: new THREE.BoxGeometry(1.2, 2, 0.1),
+      houseWindow: new THREE.BoxGeometry(1, 1, 0.1),
+      // Commercial - Shop
+      shopBody: new THREE.BoxGeometry(8, 3.5, 5),
+      shopAwning: new THREE.BoxGeometry(8.5, 0.3, 1.5),
+      shopWindow: new THREE.BoxGeometry(2.5, 2, 0.1),
+      // Commercial - Warehouse
+      warehouseBody: new THREE.BoxGeometry(12, 5, 8),
+      warehouseRoof: new THREE.BoxGeometry(12.5, 0.5, 9),
+      warehouseDoor: new THREE.BoxGeometry(3, 4, 0.1),
+      // Industrial - Factory
+      factoryBody: new THREE.BoxGeometry(10, 6, 8),
+      factoryChimney: new THREE.CylinderGeometry(0.4, 0.5, 4, 8),
+      factoryDoor: new THREE.BoxGeometry(2.5, 2.5, 0.1), // Shorter door to not overlap windows
+      // Industrial - Silo
+      siloBody: new THREE.CylinderGeometry(2, 2, 8, 12),
+      siloTop: new THREE.ConeGeometry(2.2, 1.5, 12),
+      // Bushes
+      bushMain: new THREE.SphereGeometry(1.2, 8, 6),
+      bushSmall: new THREE.SphereGeometry(0.8, 8, 6)
+    };
+
+    // All environment materials
+    this.sharedEnvMaterials = {
+      // Trees
+      treeTrunk: new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.9 }),
+      treeFoliage: new THREE.MeshStandardMaterial({ color: 0x228b22, roughness: 0.7 }),
+      // Residential
+      houseWall: new THREE.MeshStandardMaterial({ color: 0xd2b48c, roughness: 0.8 }),
+      houseRoof: new THREE.MeshStandardMaterial({ color: 0x8b0000, roughness: 0.6 }),
+      houseDoor: new THREE.MeshStandardMaterial({ color: 0x654321 }),
+      houseWindow: new THREE.MeshStandardMaterial({ color: 0x87ceeb }),
+      // Commercial - varied colors for shops
+      shopWallColors: [
+        new THREE.MeshStandardMaterial({ color: 0xf5f5dc, roughness: 0.7 }), // Beige
+        new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.7 }), // Light gray
+        new THREE.MeshStandardMaterial({ color: 0xfff8dc, roughness: 0.7 }), // Cream
+        new THREE.MeshStandardMaterial({ color: 0xf0e68c, roughness: 0.7 })  // Khaki
+      ],
+      shopAwningColors: [
+        new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.6 }), // Red
+        new THREE.MeshStandardMaterial({ color: 0x006600, roughness: 0.6 }), // Green
+        new THREE.MeshStandardMaterial({ color: 0x000066, roughness: 0.6 }), // Blue
+        new THREE.MeshStandardMaterial({ color: 0xff6600, roughness: 0.6 })  // Orange
+      ],
+      warehouseMetal: new THREE.MeshStandardMaterial({ color: 0x708090, roughness: 0.4, metalness: 0.3 }),
+      warehouseDoor: new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.5, metalness: 0.4 }),
+      // Industrial
+      factoryWall: new THREE.MeshStandardMaterial({ color: 0x696969, roughness: 0.8 }),
+      factoryChimney: new THREE.MeshStandardMaterial({ color: 0x8b0000, roughness: 0.7 }),
+      siloMetal: new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.3, metalness: 0.6 }),
+      // Bushes
+      bush: new THREE.MeshStandardMaterial({ color: 0x2d5016, roughness: 0.9 })
+    };
+
+    // Streetlight geometries
+    this.sharedStreetlightGeometries = {
+      pole: new THREE.CylinderGeometry(0.08, 0.1, 6, 8),
+      arm: new THREE.CylinderGeometry(0.05, 0.05, 2.2, 8),
+      housing: new THREE.BoxGeometry(0.4, 0.15, 0.6),
+      bulb: new THREE.SphereGeometry(0.15, 8, 8)
+    };
+
+    // Streetlight materials
+    this.sharedStreetlightMaterials = {
+      pole: new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.4, metalness: 0.6 }),
+      housing: new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3, metalness: 0.7 })
+    };
+
+    // Speed limit sign geometries
+    const signRadius = 1.0;
+    this.sharedSignGeometries = {
+      pole: new THREE.CylinderGeometry(0.08, 0.08, 1.5, 8),
+      face: new THREE.PlaneGeometry(signRadius * 2.2, signRadius * 2.2),
+      back: new THREE.CircleGeometry(signRadius, 32)
+    };
+
+    // Speed limit sign materials
+    this.sharedSignMaterials = {
+      pole: new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.6, roughness: 0.4 }),
+      back: new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.7, side: THREE.DoubleSide })
+    };
+  }
+
+  /**
+   * Initialize phone distraction system
+   */
+  private initPhoneSystem(): void {
+    // Schedule first notification
+    this.phoneNextNotificationTime = this.PHONE_MIN_INTERVAL + Math.random() * (this.PHONE_MAX_INTERVAL - this.PHONE_MIN_INTERVAL);
+
+    // Update phone clock every second
+    this.updatePhoneClock();
+    setInterval(() => this.updatePhoneClock(), 1000);
+  }
+
+  /**
+   * Update phone clock display
+   */
+  private updatePhoneClock(): void {
+    const now = new Date();
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    if (this.phoneClockElement) {
+      this.phoneClockElement.textContent = `${hours}:${minutes}`;
+    }
+    // Also update the status bar time
+    const phoneTimeElement = document.querySelector('.phone-time');
+    if (phoneTimeElement) {
+      phoneTimeElement.textContent = `${hours}:${minutes}`;
+    }
+  }
+
+  /**
+   * Update phone distraction system (called every frame)
+   */
+  private updatePhone(deltaTime: number): void {
+    if (this.isGameOver || !this.gameStarted) return;
+
+    this.phoneNotificationTimer += deltaTime;
+
+    // Check if it's time for a notification
+    if (!this.phoneNotificationActive && this.phoneNotificationTimer >= this.phoneNextNotificationTime) {
+      this.showPhoneNotification();
+    }
+  }
+
+  /**
+   * Show a random phone notification
+   */
+  private showPhoneNotification(): void {
+    // Pick a random message
+    const message = this.phoneMessages[Math.floor(Math.random() * this.phoneMessages.length)];
+
+    // Update notification content
+    this.notificationTitleElement.textContent = message.title;
+    this.notificationBodyElement.textContent = message.body;
+
+    // Update app icon
+    const iconElement = this.phoneNotificationElement.querySelector('.notification-app-icon');
+    if (iconElement) {
+      iconElement.textContent = message.icon;
+    }
+
+    // Show notification with animation
+    this.phoneNotificationElement.classList.remove('hidden');
+    this.phoneNotificationElement.classList.add('visible');
+    this.phoneElement.classList.add('notification-active');
+    this.phoneNotificationActive = true;
+
+    // Play notification sound
+    this.playNotificationSound();
+
+    // Hide notification after 4 seconds
+    setTimeout(() => {
+      this.hidePhoneNotification();
+    }, 4000);
+
+    // Schedule next notification
+    this.phoneNotificationTimer = 0;
+    this.phoneNextNotificationTime = this.PHONE_MIN_INTERVAL + Math.random() * (this.PHONE_MAX_INTERVAL - this.PHONE_MIN_INTERVAL);
+  }
+
+  /**
+   * Hide phone notification
+   */
+  private hidePhoneNotification(): void {
+    this.phoneNotificationElement.classList.remove('visible');
+    this.phoneNotificationElement.classList.add('hidden');
+    this.phoneElement.classList.remove('notification-active');
+    this.phoneNotificationActive = false;
+  }
+
+  /**
+   * Play notification sound using Web Audio API
+   */
+  private playNotificationSound(): void {
+    try {
+      // Create or reuse audio context
+      if (!this.phoneAudioContext) {
+        this.phoneAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+
+      const ctx = this.phoneAudioContext;
+
+      // Create a pleasant notification sound (two-tone chime)
+      const now = ctx.currentTime;
+
+      // First tone
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.frequency.value = 880; // A5
+      osc1.type = 'sine';
+      gain1.gain.setValueAtTime(0.15, now);
+      gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.15);
+
+      // Second tone (slightly delayed, higher pitch)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.frequency.value = 1320; // E6
+      osc2.type = 'sine';
+      gain2.gain.setValueAtTime(0, now + 0.08);
+      gain2.gain.linearRampToValueAtTime(0.12, now + 0.1);
+      gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.08);
+      osc2.stop(now + 0.25);
+
+    } catch (e) {
+      // Audio not supported, silently ignore
+    }
+  }
+
+  /**
+   * Initialize shared geometries, materials, and pre-allocate all vehicle pools
    * Called once at startup to avoid runtime allocations
    */
-  private initOncomingCarPool(): void {
-    // Create shared geometries (once)
+  private initVehiclePools(): void {
+    // ========== CAR shared geometries and materials ==========
     this.sharedCarGeometries = {
       body: new THREE.BoxGeometry(2, 0.8, 4),
       cabin: new THREE.BoxGeometry(1.8, 0.8, 2),
@@ -982,8 +1515,8 @@ class SafeDistanceSimulator {
       rim: new THREE.CylinderGeometry(0.22, 0.22, 0.32, 16)
     };
 
-    // Create shared materials (reused across all cars)
-    const carColors = [0xffffff, 0xcccccc, 0x888888, 0x333333, 0x2244aa, 0x882222];
+    // Colors that contrast with white headlights (no white/black)
+    const carColors = [0x4466aa, 0x882222, 0x228844, 0x886622, 0x666688, 0x884488];
     this.sharedCarMaterials = {
       bodyColors: carColors.map(color => new THREE.MeshStandardMaterial({
         color, roughness: 0.3, metalness: 0.7
@@ -998,12 +1531,99 @@ class SafeDistanceSimulator {
       rim: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.3, metalness: 0.8 })
     };
 
-    // Pre-allocate pool of cars
+    // ========== VAN shared geometries and materials ==========
+    this.sharedVanGeometries = {
+      body: new THREE.BoxGeometry(2.2, 2.2, 5.5),
+      cabin: new THREE.BoxGeometry(2.2, 1.6, 1.8),
+      windscreen: new THREE.PlaneGeometry(1.8, 1.0),
+      headlight: new THREE.PlaneGeometry(0.4, 0.3),
+      wheel: new THREE.CylinderGeometry(0.45, 0.45, 0.35, 16),
+      rim: new THREE.CylinderGeometry(0.25, 0.25, 0.36, 16)
+    };
+
+    // Van colors - contrast with headlights (no white/black)
+    const vanColors = [0x4466aa, 0xcc8833, 0x668866, 0x996666];
+    this.sharedVanMaterials = {
+      bodyColors: vanColors.map(color => new THREE.MeshStandardMaterial({
+        color, roughness: 0.4, metalness: 0.5
+      })),
+      tire: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }),
+      rim: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.3, metalness: 0.8 })
+    };
+
+    // ========== TRUCK shared geometries and materials ==========
+    this.sharedTruckGeometries = {
+      cabin: new THREE.BoxGeometry(2.4, 2.0, 2.2),
+      cargo: new THREE.BoxGeometry(2.5, 2.8, 6),
+      windscreen: new THREE.PlaneGeometry(2.0, 1.2),
+      headlight: new THREE.PlaneGeometry(0.5, 0.4),
+      wheel: new THREE.CylinderGeometry(0.5, 0.5, 0.4, 16),
+      rim: new THREE.CylinderGeometry(0.28, 0.28, 0.42, 16)
+    };
+
+    const truckCabinColors = [0x2255aa, 0xcc2222, 0x228833, 0xff8800];
+    this.sharedTruckMaterials = {
+      cabinColors: truckCabinColors.map(color => new THREE.MeshStandardMaterial({
+        color, roughness: 0.4, metalness: 0.6
+      })),
+      cargo: new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.7, metalness: 0.3 }),
+      tire: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }),
+      rim: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.3, metalness: 0.8 })
+    };
+
+    // ========== SEMI-TRUCK shared geometries and materials ==========
+    this.sharedSemiGeometries = {
+      cabin: new THREE.BoxGeometry(2.6, 2.8, 3.0),
+      sleeper: new THREE.BoxGeometry(2.4, 1.2, 1.5), // Hood/engine section
+      trailer: new THREE.BoxGeometry(2.6, 3.2, 12),
+      windscreen: new THREE.PlaneGeometry(2.2, 1.4),
+      headlight: new THREE.PlaneGeometry(0.6, 0.5),
+      wheel: new THREE.CylinderGeometry(0.55, 0.55, 0.45, 16),
+      rim: new THREE.CylinderGeometry(0.32, 0.32, 0.47, 16)
+    };
+
+    // Semi-truck colors - contrast with headlights (no white/black)
+    const semiCabinColors = [0x1144aa, 0xcc1111, 0x117722, 0xdd6600, 0x445566];
+    const semiTrailerColors = [0x667788, 0x886644, 0x446688, 0x668844, 0x884466];
+    this.sharedSemiMaterials = {
+      cabinColors: semiCabinColors.map(color => new THREE.MeshStandardMaterial({
+        color, roughness: 0.3, metalness: 0.7
+      })),
+      trailerColors: semiTrailerColors.map(color => new THREE.MeshStandardMaterial({
+        color, roughness: 0.5, metalness: 0.3
+      })),
+      chrome: new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.1, metalness: 0.95 }),
+      tire: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }),
+      rim: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.3, metalness: 0.8 })
+    };
+
+    // ========== Pre-allocate all vehicle pools ==========
+    // Cars
     for (let i = 0; i < this.ONCOMING_POOL_SIZE; i++) {
       const car = this.createOncomingCarModel();
       car.visible = false;
       this.oncomingCarPool.push(car);
-      // Don't add to scene yet - will be added when spawned
+    }
+
+    // Vans
+    for (let i = 0; i < this.VAN_POOL_SIZE; i++) {
+      const van = this.createOncomingVanModel();
+      van.visible = false;
+      this.oncomingVanPool.push(van);
+    }
+
+    // Trucks
+    for (let i = 0; i < this.TRUCK_POOL_SIZE; i++) {
+      const truck = this.createOncomingTruckModel();
+      truck.visible = false;
+      this.oncomingTruckPool.push(truck);
+    }
+
+    // Semi-trucks
+    for (let i = 0; i < this.SEMI_POOL_SIZE; i++) {
+      const semi = this.createOncomingSemiTruckModel();
+      semi.visible = false;
+      this.oncomingSemiPool.push(semi);
     }
   }
 
@@ -1073,7 +1693,302 @@ class SafeDistanceSimulator {
     car.position.x = this.ONCOMING_LANE_X;
     car.rotation.y = Math.PI;
 
+    // Mark as regular car for pool recycling
+    car.userData.vehicleType = 'car';
+
     return car;
+  }
+
+  private createOncomingVanModel(): THREE.Group {
+    const van = new THREE.Group();
+    const geom = this.sharedVanGeometries!;
+    const mat = this.sharedVanMaterials!;
+    const carMat = this.sharedCarMaterials!;
+
+    // Random body color from pre-created materials
+    const bodyMaterial = mat.bodyColors[Math.floor(Math.random() * mat.bodyColors.length)];
+
+    // Van body (larger box)
+    const body = new THREE.Mesh(geom.body, bodyMaterial);
+    body.position.y = 1.5;
+    body.position.z = 0.5;
+    van.add(body);
+
+    // Cabin (front part, slightly lower)
+    const cabin = new THREE.Mesh(geom.cabin, bodyMaterial);
+    cabin.position.set(0, 1.2, -2.2);
+    van.add(cabin);
+
+    // Windscreen
+    const windscreen = new THREE.Mesh(geom.windscreen, carMat.windscreen);
+    windscreen.position.set(0, 1.8, -3.1);
+    windscreen.rotation.x = -0.15;
+    van.add(windscreen);
+
+    // Headlights
+    const leftHeadlight = new THREE.Mesh(geom.headlight, carMat.headlight);
+    leftHeadlight.position.set(-0.7, 0.9, -3.15);
+    van.add(leftHeadlight);
+
+    const rightHeadlight = new THREE.Mesh(geom.headlight, carMat.headlight);
+    rightHeadlight.position.set(0.7, 0.9, -3.15);
+    van.add(rightHeadlight);
+
+    // Point lights
+    const leftLight = new THREE.PointLight(0xffffee, 2, 20);
+    leftLight.position.set(-0.5, 0.9, -3.5);
+    van.add(leftLight);
+
+    const rightLight = new THREE.PointLight(0xffffee, 2, 20);
+    rightLight.position.set(0.5, 0.9, -3.5);
+    van.add(rightLight);
+
+    // Wheels (4x, larger)
+    const wheelPositions = [
+      { pos: [-1.0, 0.45, -1.8], side: -1 },
+      { pos: [1.0, 0.45, -1.8], side: 1 },
+      { pos: [-1.0, 0.45, 2.0], side: -1 },
+      { pos: [1.0, 0.45, 2.0], side: 1 }
+    ];
+
+    wheelPositions.forEach(({ pos, side }) => {
+      const tire = new THREE.Mesh(geom.wheel, mat.tire);
+      tire.rotation.z = Math.PI / 2;
+      tire.position.set(pos[0], pos[1], pos[2]);
+      van.add(tire);
+
+      const rim = new THREE.Mesh(geom.rim, mat.rim);
+      rim.rotation.z = Math.PI / 2;
+      rim.position.set(pos[0] + side * 0.02, pos[1], pos[2]);
+      van.add(rim);
+    });
+
+    van.position.x = this.ONCOMING_LANE_X;
+    van.rotation.y = Math.PI;
+
+    // Mark as van (not recyclable to car pool)
+    van.userData.vehicleType = 'van';
+
+    return van;
+  }
+
+  private createOncomingTruckModel(): THREE.Group {
+    const truck = new THREE.Group();
+    const geom = this.sharedTruckGeometries!;
+    const mat = this.sharedTruckMaterials!;
+    const carMat = this.sharedCarMaterials!;
+
+    // Random cabin color from pre-created materials
+    const cabinMaterial = mat.cabinColors[Math.floor(Math.random() * mat.cabinColors.length)];
+
+    // Cabin
+    const cabin = new THREE.Mesh(geom.cabin, cabinMaterial);
+    cabin.position.set(0, 1.8, -2.5);
+    truck.add(cabin);
+
+    // Cargo area (gray box)
+    const cargo = new THREE.Mesh(geom.cargo, mat.cargo);
+    cargo.position.set(0, 2.0, 1.5);
+    truck.add(cargo);
+
+    // Windscreen
+    const windscreen = new THREE.Mesh(geom.windscreen, carMat.windscreen);
+    windscreen.position.set(0, 2.4, -3.6);
+    windscreen.rotation.x = -0.1;
+    truck.add(windscreen);
+
+    // Headlights
+    const leftHeadlight = new THREE.Mesh(geom.headlight, carMat.headlight);
+    leftHeadlight.position.set(-0.8, 1.2, -3.65);
+    truck.add(leftHeadlight);
+
+    const rightHeadlight = new THREE.Mesh(geom.headlight, carMat.headlight);
+    rightHeadlight.position.set(0.8, 1.2, -3.65);
+    truck.add(rightHeadlight);
+
+    // Point lights
+    const leftLight = new THREE.PointLight(0xffffee, 2.5, 25);
+    leftLight.position.set(-0.6, 1.2, -4);
+    truck.add(leftLight);
+
+    const rightLight = new THREE.PointLight(0xffffee, 2.5, 25);
+    rightLight.position.set(0.6, 1.2, -4);
+    truck.add(rightLight);
+
+    // Wheels (6x - 2 front, 4 rear dual)
+    const frontWheelPositions = [
+      { pos: [-1.1, 0.5, -2.0], side: -1 },
+      { pos: [1.1, 0.5, -2.0], side: 1 }
+    ];
+    const rearWheelPositions = [
+      { pos: [-1.1, 0.5, 2.5], side: -1 },
+      { pos: [1.1, 0.5, 2.5], side: 1 },
+      { pos: [-1.1, 0.5, 3.5], side: -1 },
+      { pos: [1.1, 0.5, 3.5], side: 1 }
+    ];
+
+    [...frontWheelPositions, ...rearWheelPositions].forEach(({ pos, side }) => {
+      const tire = new THREE.Mesh(geom.wheel, mat.tire);
+      tire.rotation.z = Math.PI / 2;
+      tire.position.set(pos[0], pos[1], pos[2]);
+      truck.add(tire);
+
+      const rim = new THREE.Mesh(geom.rim, mat.rim);
+      rim.rotation.z = Math.PI / 2;
+      rim.position.set(pos[0] + side * 0.02, pos[1], pos[2]);
+      truck.add(rim);
+    });
+
+    truck.position.x = this.ONCOMING_LANE_X;
+    truck.rotation.y = Math.PI;
+
+    // Mark as truck (not recyclable to car pool)
+    truck.userData.vehicleType = 'truck';
+
+    return truck;
+  }
+
+  private createOncomingSemiTruckModel(): THREE.Group {
+    const semi = new THREE.Group();
+    const geom = this.sharedSemiGeometries!;
+    const mat = this.sharedSemiMaterials!;
+    const carMat = this.sharedCarMaterials!;
+
+    // Random cabin color from pre-created materials
+    const cabinMaterial = mat.cabinColors[Math.floor(Math.random() * mat.cabinColors.length)];
+
+    // Large cabin with sleeper
+    const cabin = new THREE.Mesh(geom.cabin, cabinMaterial);
+    cabin.position.set(0, 2.0, -4.5);
+    semi.add(cabin);
+
+    // Hood (front engine section)
+    const hood = new THREE.Mesh(geom.sleeper, cabinMaterial);
+    hood.position.set(0, 1.2, -6.5);
+    semi.add(hood);
+
+    // Large trailer - random color from pre-created materials
+    const trailerMaterial = mat.trailerColors[Math.floor(Math.random() * mat.trailerColors.length)];
+    const trailer = new THREE.Mesh(geom.trailer, trailerMaterial);
+    trailer.position.set(0, 2.2, 3);
+    semi.add(trailer);
+
+    // Windscreen
+    const windscreen = new THREE.Mesh(geom.windscreen, carMat.windscreen);
+    windscreen.position.set(0, 2.8, -6.0);
+    windscreen.rotation.x = -0.15;
+    semi.add(windscreen);
+
+    // Large headlights
+    const leftHeadlight = new THREE.Mesh(geom.headlight, carMat.headlight);
+    leftHeadlight.position.set(-0.9, 1.0, -7.3);
+    semi.add(leftHeadlight);
+
+    const rightHeadlight = new THREE.Mesh(geom.headlight, carMat.headlight);
+    rightHeadlight.position.set(0.9, 1.0, -7.3);
+    semi.add(rightHeadlight);
+
+    // Powerful point lights
+    const leftLight = new THREE.PointLight(0xffffee, 3, 30);
+    leftLight.position.set(-0.7, 1.0, -7.8);
+    semi.add(leftLight);
+
+    const rightLight = new THREE.PointLight(0xffffee, 3, 30);
+    rightLight.position.set(0.7, 1.0, -7.8);
+    semi.add(rightLight);
+
+    // Wheels (10x - 2 steering, 4 drive, 4 trailer)
+    const wheelPositions = [
+      // Steering axle
+      { pos: [-1.2, 0.55, -5.5], side: -1 },
+      { pos: [1.2, 0.55, -5.5], side: 1 },
+      // Drive axles (dual)
+      { pos: [-1.2, 0.55, -2.5], side: -1 },
+      { pos: [1.2, 0.55, -2.5], side: 1 },
+      { pos: [-1.2, 0.55, -1.5], side: -1 },
+      { pos: [1.2, 0.55, -1.5], side: 1 },
+      // Trailer axles
+      { pos: [-1.2, 0.55, 6.0], side: -1 },
+      { pos: [1.2, 0.55, 6.0], side: 1 },
+      { pos: [-1.2, 0.55, 7.5], side: -1 },
+      { pos: [1.2, 0.55, 7.5], side: 1 }
+    ];
+
+    wheelPositions.forEach(({ pos, side }) => {
+      const tire = new THREE.Mesh(geom.wheel, mat.tire);
+      tire.rotation.z = Math.PI / 2;
+      tire.position.set(pos[0], pos[1], pos[2]);
+      semi.add(tire);
+
+      const rim = new THREE.Mesh(geom.rim, mat.rim);
+      rim.rotation.z = Math.PI / 2;
+      rim.position.set(pos[0] + side * 0.02, pos[1], pos[2]);
+      semi.add(rim);
+    });
+
+    // Add TIR plate and company logo decorations
+    if (this.truckDecorationTextures) {
+      // TIR plate on the back of the trailer (facing the player)
+      const tirMaterial = new THREE.SpriteMaterial({
+        map: this.truckDecorationTextures.tir,
+        transparent: false
+      });
+      const tirSprite = new THREE.Sprite(tirMaterial);
+      tirSprite.scale.set(0.8, 0.4, 1);
+      tirSprite.position.set(0, 1.0, 9.05); // Back of trailer
+      semi.add(tirSprite);
+
+      // Random company logo on the side of the trailer
+      const logoIndex = Math.floor(Math.random() * this.truckDecorationTextures.logos.length);
+      const logoTexture = this.truckDecorationTextures.logos[logoIndex];
+
+      // Logo on left side of trailer (facing left, readable from outside)
+      const logoGeometry = new THREE.PlaneGeometry(3.5, 0.8);
+      const logoMaterialLeft = new THREE.MeshBasicMaterial({
+        map: logoTexture,
+        transparent: true,
+        side: THREE.FrontSide
+      });
+      const logoLeft = new THREE.Mesh(logoGeometry, logoMaterialLeft);
+      logoLeft.position.set(-1.32, 2.8, 2);
+      logoLeft.rotation.y = -Math.PI / 2; // Face outward (left side)
+      semi.add(logoLeft);
+
+      // Logo on right side of trailer (facing right, readable from outside)
+      const logoMaterialRight = new THREE.MeshBasicMaterial({
+        map: logoTexture,
+        transparent: true,
+        side: THREE.FrontSide
+      });
+      const logoRight = new THREE.Mesh(logoGeometry, logoMaterialRight);
+      logoRight.position.set(1.32, 2.8, 2);
+      logoRight.rotation.y = Math.PI / 2; // Face outward (right side)
+      semi.add(logoRight);
+
+      // Marker lights on top of cabin (orange)
+      const markerGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+      const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff8800 });
+      for (let x = -1.0; x <= 1.0; x += 0.5) {
+        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+        marker.position.set(x, 3.5, -4.5);
+        semi.add(marker);
+      }
+
+      // Marker lights on top of trailer (orange)
+      for (let x = -1.0; x <= 1.0; x += 0.5) {
+        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+        marker.position.set(x, 3.85, 3);
+        semi.add(marker);
+      }
+    }
+
+    semi.position.x = this.ONCOMING_LANE_X;
+    semi.rotation.y = Math.PI;
+
+    // Mark as semi-truck (not recyclable to car pool)
+    semi.userData.vehicleType = 'semi';
+
+    return semi;
   }
 
   private spawnOncomingCar(): void {
@@ -1088,26 +2003,61 @@ class SafeDistanceSimulator {
       }
     }
 
-    // Get car from pool or create new if pool empty
-    let car: THREE.Group;
-    if (this.oncomingCarPool.length > 0) {
-      car = this.oncomingCarPool.pop()!;
-      car.visible = true;
+    // Randomly select vehicle type:
+    // 60% car, 20% van, 12% truck, 8% semi-truck (TIR)
+    const vehicleRoll = Math.random();
+    let vehicle: THREE.Group;
+    let speed: number;
+
+    if (vehicleRoll < 0.60) {
+      // Regular car (60%)
+      if (this.oncomingCarPool.length > 0) {
+        vehicle = this.oncomingCarPool.pop()!;
+        vehicle.visible = true;
+      } else {
+        vehicle = this.createOncomingCarModel();
+      }
+      // Cars: 80-130 km/h (22-36 m/s)
+      speed = 22 + Math.random() * 14;
+    } else if (vehicleRoll < 0.80) {
+      // Van (20%)
+      if (this.oncomingVanPool.length > 0) {
+        vehicle = this.oncomingVanPool.pop()!;
+        vehicle.visible = true;
+      } else {
+        vehicle = this.createOncomingVanModel();
+      }
+      // Vans: 70-110 km/h (19-31 m/s)
+      speed = 19 + Math.random() * 12;
+    } else if (vehicleRoll < 0.92) {
+      // Truck (12%)
+      if (this.oncomingTruckPool.length > 0) {
+        vehicle = this.oncomingTruckPool.pop()!;
+        vehicle.visible = true;
+      } else {
+        vehicle = this.createOncomingTruckModel();
+      }
+      // Trucks: 60-90 km/h (17-25 m/s)
+      speed = 17 + Math.random() * 8;
     } else {
-      // Pool exhausted, create new (fallback, shouldn't happen often)
-      car = this.createOncomingCarModel();
+      // Semi-truck / TIR (8%)
+      if (this.oncomingSemiPool.length > 0) {
+        vehicle = this.oncomingSemiPool.pop()!;
+        vehicle.visible = true;
+      } else {
+        vehicle = this.createOncomingSemiTruckModel();
+      }
+      // Semi-trucks: 50-80 km/h (14-22 m/s)
+      speed = 14 + Math.random() * 8;
     }
 
     // Position ahead of player (in negative Z world space)
     const spawnPosition = playerPos + this.ONCOMING_SPAWN_AHEAD;
-    car.position.z = -spawnPosition;
-    car.position.x = this.ONCOMING_LANE_X;
+    vehicle.position.z = -spawnPosition;
+    vehicle.position.x = this.ONCOMING_LANE_X;
 
-    // Random speed between 80-130 km/h (22-36 m/s)
-    const speed = 22 + Math.random() * 14;
-
-    this.scene.add(car);
-    this.oncomingCars.push(car);
+    this.scene.add(vehicle);
+    this.oncomingCars.push(vehicle);
     this.oncomingCarPositions.push(spawnPosition);
     this.oncomingCarSpeeds.push(speed);
   }
@@ -1136,10 +2086,21 @@ class SafeDistanceSimulator {
 
       // Return to pool if passed player - swap with last element and pop (O(1) instead of O(n))
       if (this.oncomingCarPositions[i] < playerPos - this.ONCOMING_DESPAWN_BEHIND) {
-        const carToRecycle = this.oncomingCars[i];
-        this.scene.remove(carToRecycle);
-        carToRecycle.visible = false;
-        this.oncomingCarPool.push(carToRecycle); // Return to pool for reuse
+        const vehicleToRecycle = this.oncomingCars[i];
+        this.scene.remove(vehicleToRecycle);
+        vehicleToRecycle.visible = false;
+
+        // Recycle vehicles to their correct pools
+        const vehicleType = vehicleToRecycle.userData.vehicleType;
+        if (vehicleType === 'car') {
+          this.oncomingCarPool.push(vehicleToRecycle);
+        } else if (vehicleType === 'van') {
+          this.oncomingVanPool.push(vehicleToRecycle);
+        } else if (vehicleType === 'truck') {
+          this.oncomingTruckPool.push(vehicleToRecycle);
+        } else if (vehicleType === 'semi') {
+          this.oncomingSemiPool.push(vehicleToRecycle);
+        }
 
         const lastIdx = this.oncomingCars.length - 1;
         if (i !== lastIdx) {
@@ -1442,44 +2403,27 @@ class SafeDistanceSimulator {
 
   private createTree(): THREE.Group {
     const tree = new THREE.Group();
+    const geom = this.sharedEnvGeometries!;
+    const mat = this.sharedEnvMaterials!;
 
-    // Tree trunk
-    const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.4, 4, 8);
-    const trunkMaterial = new THREE.MeshStandardMaterial({
-      color: 0x8b4513,
-      roughness: 0.8
-    });
-    const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+    // Tree trunk (reuse shared geometry and material)
+    const trunk = new THREE.Mesh(geom.treeTrunk, mat.treeTrunk);
     trunk.position.y = 2;
     trunk.castShadow = true;
     tree.add(trunk);
 
     // Tree foliage (3 spheres stacked for better tree shape)
-    const foliageMaterial = new THREE.MeshStandardMaterial({
-      color: 0x228b22,
-      roughness: 0.7
-    });
-
-    const foliage1 = new THREE.Mesh(
-      new THREE.SphereGeometry(2, 8, 8),
-      foliageMaterial
-    );
+    const foliage1 = new THREE.Mesh(geom.treeFoliage1, mat.treeFoliage);
     foliage1.position.y = 5;
     foliage1.castShadow = true;
     tree.add(foliage1);
 
-    const foliage2 = new THREE.Mesh(
-      new THREE.SphereGeometry(1.5, 8, 8),
-      foliageMaterial
-    );
+    const foliage2 = new THREE.Mesh(geom.treeFoliage2, mat.treeFoliage);
     foliage2.position.y = 6.5;
     foliage2.castShadow = true;
     tree.add(foliage2);
 
-    const foliage3 = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 8, 8),
-      foliageMaterial
-    );
+    const foliage3 = new THREE.Mesh(geom.treeFoliage3, mat.treeFoliage);
     foliage3.position.y = 7.5;
     foliage3.castShadow = true;
     tree.add(foliage3);
@@ -1489,72 +2433,172 @@ class SafeDistanceSimulator {
 
   private createHouse(): THREE.Group {
     const house = new THREE.Group();
+    const geom = this.sharedEnvGeometries!;
+    const mat = this.sharedEnvMaterials!;
 
-    // House walls
-    const wallGeometry = new THREE.BoxGeometry(6, 4, 6);
-    const wallMaterial = new THREE.MeshStandardMaterial({
-      color: 0xd2b48c,
-      roughness: 0.8
-    });
-    const walls = new THREE.Mesh(wallGeometry, wallMaterial);
+    // House walls (reuse shared geometry and material)
+    const walls = new THREE.Mesh(geom.houseWall, mat.houseWall);
     walls.position.y = 2;
     walls.castShadow = true;
     house.add(walls);
 
     // Roof (pyramid shape)
-    const roofGeometry = new THREE.ConeGeometry(4.5, 2.5, 4);
-    const roofMaterial = new THREE.MeshStandardMaterial({
-      color: 0x8b0000,
-      roughness: 0.6
-    });
-    const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+    const roof = new THREE.Mesh(geom.houseRoof, mat.houseRoof);
     roof.position.y = 5.25;
     roof.rotation.y = Math.PI / 4;
     roof.castShadow = true;
     house.add(roof);
 
     // Door
-    const doorGeometry = new THREE.BoxGeometry(1.2, 2, 0.1);
-    const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x654321 });
-    const door = new THREE.Mesh(doorGeometry, doorMaterial);
+    const door = new THREE.Mesh(geom.houseDoor, mat.houseDoor);
     door.position.set(0, 1, 3.05);
     house.add(door);
 
     // Windows
-    const windowGeometry = new THREE.BoxGeometry(1, 1, 0.1);
-    const windowMaterial = new THREE.MeshStandardMaterial({ color: 0x87ceeb });
-
-    const window1 = new THREE.Mesh(windowGeometry, windowMaterial);
+    const window1 = new THREE.Mesh(geom.houseWindow, mat.houseWindow);
     window1.position.set(-1.8, 2.5, 3.05);
     house.add(window1);
 
-    const window2 = new THREE.Mesh(windowGeometry, windowMaterial);
+    const window2 = new THREE.Mesh(geom.houseWindow, mat.houseWindow);
     window2.position.set(1.8, 2.5, 3.05);
     house.add(window2);
 
     return house;
   }
 
+  private createShop(): THREE.Group {
+    const shop = new THREE.Group();
+    const geom = this.sharedEnvGeometries!;
+    const mat = this.sharedEnvMaterials!;
+
+    // Pick random colors for this shop
+    const wallMat = mat.shopWallColors[Math.floor(Math.random() * mat.shopWallColors.length)];
+    const awningMat = mat.shopAwningColors[Math.floor(Math.random() * mat.shopAwningColors.length)];
+
+    // Shop body
+    const body = new THREE.Mesh(geom.shopBody, wallMat);
+    body.position.y = 1.75;
+    body.castShadow = true;
+    shop.add(body);
+
+    // Awning over front
+    const awning = new THREE.Mesh(geom.shopAwning, awningMat);
+    awning.position.set(0, 3.2, 3);
+    awning.rotation.x = -0.1; // Slight angle
+    shop.add(awning);
+
+    // Large shop windows
+    const window1 = new THREE.Mesh(geom.shopWindow, mat.houseWindow);
+    window1.position.set(-2, 1.5, 2.55);
+    shop.add(window1);
+
+    const window2 = new THREE.Mesh(geom.shopWindow, mat.houseWindow);
+    window2.position.set(2, 1.5, 2.55);
+    shop.add(window2);
+
+    // Door
+    const door = new THREE.Mesh(geom.houseDoor, mat.houseDoor);
+    door.position.set(0, 1, 2.55);
+    shop.add(door);
+
+    return shop;
+  }
+
+  private createWarehouse(): THREE.Group {
+    const warehouse = new THREE.Group();
+    const geom = this.sharedEnvGeometries!;
+    const mat = this.sharedEnvMaterials!;
+
+    // Main warehouse body
+    const body = new THREE.Mesh(geom.warehouseBody, mat.warehouseMetal);
+    body.position.y = 2.5;
+    body.castShadow = true;
+    warehouse.add(body);
+
+    // Flat roof (slightly larger)
+    const roof = new THREE.Mesh(geom.warehouseRoof, mat.warehouseMetal);
+    roof.position.y = 5.25;
+    warehouse.add(roof);
+
+    // Large loading door
+    const door = new THREE.Mesh(geom.warehouseDoor, mat.warehouseDoor);
+    door.position.set(0, 2, 4.05);
+    warehouse.add(door);
+
+    return warehouse;
+  }
+
+  private createFactory(): THREE.Group {
+    const factory = new THREE.Group();
+    const geom = this.sharedEnvGeometries!;
+    const mat = this.sharedEnvMaterials!;
+
+    // Main factory building
+    const body = new THREE.Mesh(geom.factoryBody, mat.factoryWall);
+    body.position.y = 3;
+    body.castShadow = true;
+    factory.add(body);
+
+    // Chimneys
+    const chimney1 = new THREE.Mesh(geom.factoryChimney, mat.factoryChimney);
+    chimney1.position.set(-3, 8, 0);
+    chimney1.castShadow = true;
+    factory.add(chimney1);
+
+    const chimney2 = new THREE.Mesh(geom.factoryChimney, mat.factoryChimney);
+    chimney2.position.set(3, 8, 0);
+    chimney2.castShadow = true;
+    factory.add(chimney2);
+
+    // Windows row
+    for (let i = -3; i <= 3; i += 2) {
+      const window = new THREE.Mesh(geom.houseWindow, mat.houseWindow);
+      window.position.set(i, 4, 4.05);
+      factory.add(window);
+    }
+
+    // Factory door (smaller, doesn't overlap windows)
+    const door = new THREE.Mesh(geom.factoryDoor, mat.warehouseDoor);
+    door.position.set(0, 1.25, 4.05); // Positioned lower to avoid window overlap
+    factory.add(door);
+
+    return factory;
+  }
+
+  private createSilo(): THREE.Group {
+    const silo = new THREE.Group();
+    const geom = this.sharedEnvGeometries!;
+    const mat = this.sharedEnvMaterials!;
+
+    // Main silo body
+    const body = new THREE.Mesh(geom.siloBody, mat.siloMetal);
+    body.position.y = 4;
+    body.castShadow = true;
+    silo.add(body);
+
+    // Conical top
+    const top = new THREE.Mesh(geom.siloTop, mat.siloMetal);
+    top.position.y = 8.75;
+    top.castShadow = true;
+    silo.add(top);
+
+    return silo;
+  }
+
   private createBush(): THREE.Group {
     const bush = new THREE.Group();
+    const geom = this.sharedEnvGeometries!;
+    const mat = this.sharedEnvMaterials!;
 
-    // Bush is a flattened sphere with multiple segments for organic look
-    const bushGeometry = new THREE.SphereGeometry(1.2, 8, 6);
-    const bushMaterial = new THREE.MeshStandardMaterial({
-      color: 0x2d5016,
-      roughness: 0.9
-    });
-    const bushMesh = new THREE.Mesh(bushGeometry, bushMaterial);
+    // Bush is a flattened sphere (reuse shared geometry and material)
+    const bushMesh = new THREE.Mesh(geom.bushMain, mat.bush);
     bushMesh.scale.y = 0.7; // Flatten slightly
     bushMesh.position.y = 0.8;
     bushMesh.castShadow = true;
     bush.add(bushMesh);
 
     // Add smaller sphere for variation
-    const bush2 = new THREE.Mesh(
-      new THREE.SphereGeometry(0.8, 8, 6),
-      bushMaterial
-    );
+    const bush2 = new THREE.Mesh(geom.bushSmall, mat.bush);
     bush2.position.set(0.6, 0.6, 0.3);
     bush2.scale.y = 0.7;
     bush2.castShadow = true;
@@ -1565,44 +2609,32 @@ class SafeDistanceSimulator {
 
   private createStreetlight(side: 'left' | 'right'): THREE.Group {
     const light = new THREE.Group();
-    const xPos = side === 'left' ? -6 : 6;
+    const xPos = side === 'left' ? -7.7 : 7.7; // Just outside guardrail (guardrail is at ±7.5)
+    const geom = this.sharedStreetlightGeometries!;
+    const mat = this.sharedStreetlightMaterials!;
 
-    // Pole
-    const poleGeometry = new THREE.CylinderGeometry(0.08, 0.1, 6, 8);
-    const poleMaterial = new THREE.MeshStandardMaterial({
-      color: 0x444444,
-      roughness: 0.4,
-      metalness: 0.6
-    });
-    const pole = new THREE.Mesh(poleGeometry, poleMaterial);
+    // Pole (reuse shared geometry and material)
+    const pole = new THREE.Mesh(geom.pole, mat.pole);
     pole.position.set(xPos, 3, 0);
     light.add(pole);
 
     // Arm extending over road
     const armLength = side === 'left' ? 2 : -2;
-    const armGeometry = new THREE.CylinderGeometry(0.05, 0.05, 2.2, 8);
-    const arm = new THREE.Mesh(armGeometry, poleMaterial);
+    const arm = new THREE.Mesh(geom.arm, mat.pole);
     arm.rotation.z = Math.PI / 2;
     arm.position.set(xPos + armLength / 2, 5.8, 0);
     light.add(arm);
 
     // Lamp housing
-    const housingGeometry = new THREE.BoxGeometry(0.4, 0.15, 0.6);
-    const housingMaterial = new THREE.MeshStandardMaterial({
-      color: 0x333333,
-      roughness: 0.3,
-      metalness: 0.7
-    });
-    const housing = new THREE.Mesh(housingGeometry, housingMaterial);
+    const housing = new THREE.Mesh(geom.housing, mat.housing);
     housing.position.set(xPos + armLength, 5.7, 0);
     light.add(housing);
 
-    // Light bulb - emissive glow (no PointLight to save performance)
-    const bulbGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+    // Light bulb - per-instance material (color changes dynamically)
     const bulbMaterial = new THREE.MeshBasicMaterial({
       color: 0x000000  // Will be set based on darkness
     });
-    const bulb = new THREE.Mesh(bulbGeometry, bulbMaterial);
+    const bulb = new THREE.Mesh(geom.bulb, bulbMaterial);
     bulb.position.set(xPos + armLength, 5.55, 0);
     light.add(bulb);
 
@@ -1670,6 +2702,55 @@ class SafeDistanceSimulator {
 
     // Mark texture as needing update
     texture.needsUpdate = true;
+  }
+
+  // Speed limit signs tracking
+  private speedLimitSigns: THREE.Group[] = [];
+  private currentSpeedLimit: number = 70; // Default speed limit in km/h (matches starting limit)
+  private lastGeneratedSpeedLimit: number = 70; // Track last generated limit for progressive changes (start low)
+
+  private createSpeedLimitSign(speedLimit: number): THREE.Group {
+    const sign = new THREE.Group();
+    const geom = this.sharedSignGeometries!;
+    const mat = this.sharedSignMaterials!;
+
+    // Sign dimensions
+    const signRadius = 1.0;
+    const signCenterHeight = 2.5;
+    const poleHeight = signCenterHeight - signRadius;
+
+    // Pole (reuse shared geometry and material)
+    const pole = new THREE.Mesh(geom.pole, mat.pole);
+    pole.position.y = poleHeight / 2;
+    pole.castShadow = true;
+    sign.add(pole);
+
+    const signHeight = signCenterHeight;
+
+    // Sign face with complete texture (per-instance material for different textures)
+    const texture = this.speedLimitTextures.get(speedLimit);
+    if (texture) {
+      const signMaterial = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        side: THREE.DoubleSide
+      });
+      const signFace = new THREE.Mesh(geom.face, signMaterial);
+      signFace.position.set(0, signHeight, 0.03);
+      signFace.rotation.y = Math.PI; // Face toward approaching player (-Z direction)
+      sign.add(signFace);
+    }
+
+    // Back of sign (reuse shared geometry and material)
+    const signBack = new THREE.Mesh(geom.back, mat.back);
+    signBack.position.set(0, signHeight, -0.02);
+    signBack.rotation.y = Math.PI;
+    sign.add(signBack);
+
+    // Store speed limit value on the sign
+    (sign as any).speedLimit = speedLimit;
+
+    return sign;
   }
 
   private createKilometerBridge(kmNumber: number): THREE.Group {
@@ -1805,6 +2886,46 @@ class SafeDistanceSimulator {
     // Store bridges on the environment group for later updates
     (envGroup as any).bridges = bridges;
 
+    // Place speed limit signs at half-distance between bridges (always placed)
+    // Bridges are at -1000 and 0, so signs would be at -500 and +500
+    // Speed limits change progressively: 30% chance to change, 70% stays the same
+    const speedLimitSteps = [70, 90, 110, 130];
+    const signLocalPositions = [-500, 500]; // Halfway between bridges
+    const signs: THREE.Group[] = [];
+    for (const localZ of signLocalPositions) {
+      // Find current index in speed limit steps
+      const currentIndex = speedLimitSteps.indexOf(this.lastGeneratedSpeedLimit);
+
+      let speedLimit = this.lastGeneratedSpeedLimit;
+
+      // 50% chance to change the speed limit
+      if (Math.random() < 0.5) {
+        // Determine possible next limits (only ±1 step, progressive change)
+        const possibleNextLimits: number[] = [];
+        if (currentIndex > 0) {
+          possibleNextLimits.push(speedLimitSteps[currentIndex - 1]); // Can go down
+        }
+        if (currentIndex < speedLimitSteps.length - 1) {
+          possibleNextLimits.push(speedLimitSteps[currentIndex + 1]); // Can go up
+        }
+
+        // Pick one of the possible limits (exclude staying the same)
+        if (possibleNextLimits.length > 0) {
+          speedLimit = possibleNextLimits[Math.floor(Math.random() * possibleNextLimits.length)];
+          this.lastGeneratedSpeedLimit = speedLimit;
+        }
+      }
+
+      const sign = this.createSpeedLimitSign(speedLimit);
+      sign.position.set(7.7, 0, localZ); // Right side of road, just outside guardrail
+      // Sign faces the player (perpendicular to road direction)
+      // No rotation needed - sign face already points toward +Z (toward approaching player)
+      envGroup.add(sign);
+      signs.push(sign);
+      this.speedLimitSigns.push(sign);
+    }
+    (envGroup as any).speedLimitSigns = signs;
+
     // Place streetlights every 50m along both sides of road
     const streetlightSpacing = 50;
     for (let z = -roadLength / 2; z < roadLength / 2; z += streetlightSpacing) {
@@ -1822,19 +2943,42 @@ class SafeDistanceSimulator {
       const offset = (Math.random() - 0.5) * 5; // Random offset for variety
 
       // Left side of road
-      if (random < 0.3) {
+      if (random < 0.25) {
         // Tree
         const tree = this.createTree();
         tree.position.set(-12 + offset, 0, z);
         tree.rotation.y = Math.random() * Math.PI * 2;
         envGroup.add(tree);
-      } else if (random < 0.4) {
-        // House (less frequent)
+      } else if (random < 0.35) {
+        // Residential house
         const house = this.createHouse();
         house.position.set(-18 + offset, 0, z);
-        house.rotation.y = Math.random() * Math.PI * 2;
+        house.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.3; // Face road
         envGroup.add(house);
-      } else if (random < 0.6) {
+      } else if (random < 0.42) {
+        // Commercial - Shop
+        const shop = this.createShop();
+        shop.position.set(-16 + offset, 0, z);
+        shop.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.2;
+        envGroup.add(shop);
+      } else if (random < 0.48) {
+        // Commercial - Warehouse
+        const warehouse = this.createWarehouse();
+        warehouse.position.set(-22 + offset, 0, z);
+        warehouse.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.2;
+        envGroup.add(warehouse);
+      } else if (random < 0.52) {
+        // Industrial - Factory
+        const factory = this.createFactory();
+        factory.position.set(-24 + offset, 0, z);
+        factory.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.2;
+        envGroup.add(factory);
+      } else if (random < 0.56) {
+        // Industrial - Silo
+        const silo = this.createSilo();
+        silo.position.set(-14 + offset, 0, z);
+        envGroup.add(silo);
+      } else if (random < 0.65) {
         // Bush
         const bush = this.createBush();
         bush.position.set(-11 + offset, 0, z);
@@ -1846,19 +2990,42 @@ class SafeDistanceSimulator {
       const random2 = Math.random();
       const offset2 = (Math.random() - 0.5) * 5;
 
-      if (random2 < 0.3) {
+      if (random2 < 0.25) {
         // Tree
         const tree = this.createTree();
         tree.position.set(12 + offset2, 0, z);
         tree.rotation.y = Math.random() * Math.PI * 2;
         envGroup.add(tree);
-      } else if (random2 < 0.4) {
-        // House
+      } else if (random2 < 0.35) {
+        // Residential house
         const house = this.createHouse();
         house.position.set(18 + offset2, 0, z);
-        house.rotation.y = Math.random() * Math.PI * 2;
+        house.rotation.y = -Math.PI / 2 + (Math.random() - 0.5) * 0.3; // Face road
         envGroup.add(house);
-      } else if (random2 < 0.6) {
+      } else if (random2 < 0.42) {
+        // Commercial - Shop
+        const shop = this.createShop();
+        shop.position.set(16 + offset2, 0, z);
+        shop.rotation.y = -Math.PI / 2 + (Math.random() - 0.5) * 0.2;
+        envGroup.add(shop);
+      } else if (random2 < 0.48) {
+        // Commercial - Warehouse
+        const warehouse = this.createWarehouse();
+        warehouse.position.set(22 + offset2, 0, z);
+        warehouse.rotation.y = -Math.PI / 2 + (Math.random() - 0.5) * 0.2;
+        envGroup.add(warehouse);
+      } else if (random2 < 0.52) {
+        // Industrial - Factory
+        const factory = this.createFactory();
+        factory.position.set(24 + offset2, 0, z);
+        factory.rotation.y = -Math.PI / 2 + (Math.random() - 0.5) * 0.2;
+        envGroup.add(factory);
+      } else if (random2 < 0.56) {
+        // Industrial - Silo
+        const silo = this.createSilo();
+        silo.position.set(14 + offset2, 0, z);
+        envGroup.add(silo);
+      } else if (random2 < 0.65) {
         // Bush
         const bush = this.createBush();
         bush.position.set(11 + offset2, 0, z);
@@ -1983,6 +3150,35 @@ class SafeDistanceSimulator {
         bridge.visible = false;
       }
     }
+  }
+
+  private updateSpeedLimits(): void {
+    const playerPos = this.playerVehicle.position;
+
+    // Check speed limit signs from both environments
+    const signs1 = (this.environment as any).speedLimitSigns || [];
+    const signs2 = (this.environment2 as any).speedLimitSigns || [];
+
+    // Check all signs - when player passes a sign, update the current speed limit
+    const checkSigns = (signs: THREE.Group[], envOffset: number) => {
+      for (const sign of signs) {
+        const signWorldZ = sign.position.z + envOffset;
+        const signWorldPos = -signWorldZ; // Convert to player coordinate system
+
+        // Check if player just passed this sign (within last 5 meters)
+        if (signWorldPos > 0 && signWorldPos < playerPos && signWorldPos > playerPos - 5) {
+          const newLimit = (sign as any).speedLimit;
+          if (newLimit && newLimit !== this.currentSpeedLimit) {
+            this.currentSpeedLimit = newLimit;
+            // Update lead vehicle AI with new speed limit (allowing 20% over)
+            this.leadVehicleAI.setSpeedLimit(newLimit);
+          }
+        }
+      }
+    };
+
+    checkSigns(signs1, this.environment.position.z);
+    checkSigns(signs2, this.environment2.position.z);
   }
 
   private updateHUD(): void {
@@ -2917,6 +4113,7 @@ class SafeDistanceSimulator {
     // Update camera and road
     this.updateCamera();
     this.updateRoad();
+    this.updateSpeedLimits();
 
     // Update rear car, oncoming traffic, and mirrors
     this.updateRearCar(clampedDelta);
@@ -2924,6 +4121,9 @@ class SafeDistanceSimulator {
 
     // Update particles
     this.updateParticles(clampedDelta);
+
+    // Update phone distraction
+    this.updatePhone(clampedDelta);
 
     // Update time of day first (controls lighting and darkness)
     // Pass player Z position so starfield follows camera
