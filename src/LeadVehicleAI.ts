@@ -16,7 +16,7 @@ export class LeadVehicleAI {
   // Speed limits and patterns
   private readonly MIN_SPEED = 30; // km/h
   private currentSpeedLimit: number = 70; // Current road speed limit (start low, increases with signs)
-  private readonly SPEED_LIMIT_EXCEED_FACTOR = 1.2; // Can exceed limit by 20%
+  private speedLimitExceedFactor: number = 1.0; // Random factor per speed limit change (1.0 to 1.3)
 
   // Weather-based visibility/traction (affects braking behavior)
   private traction: number = 1.0;
@@ -29,21 +29,36 @@ export class LeadVehicleAI {
 
   /**
    * Get the maximum speed the lead vehicle will drive at
-   * Based on current speed limit with possibility to exceed by 20%
+   * Based on current speed limit with random factor (0-30% above)
    */
   private getMaxAllowedSpeed(): number {
-    return this.currentSpeedLimit * this.SPEED_LIMIT_EXCEED_FACTOR;
+    return this.currentSpeedLimit * this.speedLimitExceedFactor;
   }
 
   /**
    * Set the current speed limit from road signs
+   * Generates a new random exceed factor (0-30%) and adjusts target speed
    */
   public setSpeedLimit(limit: number): void {
     this.currentSpeedLimit = limit;
-    // Adjust target speed if currently exceeding new limit
+    // Random exceed factor: 1.0 to 1.3 (0% to 30% above limit)
+    this.speedLimitExceedFactor = 1.0 + Math.random() * 0.3;
     const maxAllowed = this.getMaxAllowedSpeed();
-    if (this.targetSpeed > maxAllowed) {
-      this.targetSpeed = maxAllowed;
+
+    // Always adjust target speed to new limit's max allowed speed
+    // This ensures the lead car speeds up when entering higher speed zones
+    this.targetSpeed = maxAllowed;
+
+    // If going faster than the new limit, switch to braking
+    const currentSpeed = this.vehicle.getVelocityKmh();
+    if (currentSpeed > maxAllowed + 10) {
+      this.state = AIState.BRAKING;
+      this.brakingIntensity = 0.3;
+      this.stateTimer = 0;
+    } else if (currentSpeed < maxAllowed - 10) {
+      // If going slower, switch to accelerating
+      this.state = AIState.ACCELERATING;
+      this.stateTimer = 0;
     }
   }
 

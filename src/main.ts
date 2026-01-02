@@ -159,6 +159,9 @@ class SafeDistanceSimulator {
   private rearCarFlashTimer: number = 0;
   private rearCarNextFlashTime: number = 0; // When to potentially start next flash sequence
 
+  // Mirror meshes for brightness adjustment during high beam flashes
+  private mirrorMeshes: THREE.Mesh[] = [];
+
   // Oncoming traffic system (left lane) with object pooling
   private oncomingCars: THREE.Group[] = [];  // Active cars in scene
   private oncomingCarPool: THREE.Group[] = [];  // Inactive cars ready for reuse
@@ -933,6 +936,7 @@ class SafeDistanceSimulator {
     this.rightMirrorCamera = new THREE.PerspectiveCamera(40, 2, 0.1, 150);
 
     // Find and update mirror surfaces with render textures
+    this.mirrorMeshes = [];
     this.playerVehicle.mesh.children.forEach(child => {
       if (child instanceof THREE.Mesh && child.userData.isMirror) {
         const mirrorType = child.userData.mirrorType;
@@ -950,6 +954,9 @@ class SafeDistanceSimulator {
           map: texture,
           side: THREE.DoubleSide
         });
+
+        // Store reference for brightness adjustment during high beam flashes
+        this.mirrorMeshes.push(child);
       }
     });
   }
@@ -1120,6 +1127,18 @@ class SafeDistanceSimulator {
     // Update point light intensities
     for (const light of this.rearCarPointLights) {
       light.intensity = lightIntensity;
+    }
+
+    // Brighten mirrors when high beams flash (simulates being blinded)
+    for (const mirror of this.mirrorMeshes) {
+      const material = mirror.material as THREE.MeshBasicMaterial;
+      if (highBeamsOn) {
+        // Bright wash-out effect - simulate eye being flashed
+        material.color.setRGB(2.5, 2.5, 2.2);
+      } else {
+        // Normal mirror - neutral white
+        material.color.setRGB(1, 1, 1);
+      }
     }
   }
 
@@ -2767,6 +2786,8 @@ class SafeDistanceSimulator {
   private speedLimitSigns: THREE.Group[] = [];
   private currentSpeedLimit: number = 70; // Default speed limit in km/h (matches starting limit)
   private lastGeneratedSpeedLimit: number = 70; // Track last generated limit for progressive changes (start low)
+  private lastEnvChunk: number = -999; // Track last chunk position for environment
+  private lastEnv2Chunk: number = -999; // Track last chunk position for environment2
 
   private createSpeedLimitSign(speedLimit: number): THREE.Group {
     const sign = new THREE.Group();
@@ -2792,6 +2813,7 @@ class SafeDistanceSimulator {
       const signFace = new THREE.Mesh(geom.face, signMaterial);
       signFace.position.set(0, signHeight, 0.03);
       signFace.rotation.y = Math.PI; // Face toward approaching player (-Z direction)
+      signFace.userData.isSignFace = true; // Mark for regeneration
       sign.add(signFace);
     }
 
@@ -3155,8 +3177,23 @@ class SafeDistanceSimulator {
     // Environment: two chunks positioned at fixed world coordinates
     // One chunk covers current camera area, one covers ahead
     // When camera moves to next chunk, they swap roles (invisible teleport behind camera)
-    this.environment.position.z = -chunk * roadLength;
-    this.environment2.position.z = -(chunk + 1) * roadLength;
+    const envChunk = chunk;
+    const env2Chunk = chunk + 1;
+
+    this.environment.position.z = -envChunk * roadLength;
+    this.environment2.position.z = -env2Chunk * roadLength;
+
+    // Regenerate speed limit signs when environment chunks change
+    if (envChunk !== this.lastEnvChunk) {
+      this.lastEnvChunk = envChunk;
+      const signs1 = (this.environment as any).speedLimitSigns || [];
+      this.regenerateSpeedLimitSigns(signs1);
+    }
+    if (env2Chunk !== this.lastEnv2Chunk) {
+      this.lastEnv2Chunk = env2Chunk;
+      const signs2 = (this.environment2 as any).speedLimitSigns || [];
+      this.regenerateSpeedLimitSigns(signs2);
+    }
 
     // Update kilometer bridge texts based on player position
     this.updateBridgeKilometers();
@@ -3198,6 +3235,46 @@ class SafeDistanceSimulator {
         this.updateKilometerText((bridge as any).kmText, kmToShow);
       } else {
         bridge.visible = false;
+      }
+    }
+  }
+
+  private regenerateSpeedLimitSigns(signs: THREE.Group[]): void {
+    // Regenerate speed limits for signs when environment is repositioned
+    const speedLimitSteps = [70, 90, 110, 130];
+
+    for (const sign of signs) {
+      const currentIndex = speedLimitSteps.indexOf(this.lastGeneratedSpeedLimit);
+      let newLimit = this.lastGeneratedSpeedLimit;
+
+      // 50% chance to change the speed limit
+      if (Math.random() < 0.5) {
+        const possibleNextLimits: number[] = [];
+        if (currentIndex > 0) {
+          possibleNextLimits.push(speedLimitSteps[currentIndex - 1]); // Can go down
+        }
+        if (currentIndex < speedLimitSteps.length - 1) {
+          possibleNextLimits.push(speedLimitSteps[currentIndex + 1]); // Can go up
+        }
+        if (possibleNextLimits.length > 0) {
+          newLimit = possibleNextLimits[Math.floor(Math.random() * possibleNextLimits.length)];
+          this.lastGeneratedSpeedLimit = newLimit;
+        }
+      }
+
+      // Update the sign's speed limit value
+      (sign as any).speedLimit = newLimit;
+
+      // Update the sign's face material to show the new limit
+      const signFace = sign.children.find(
+        (child) => child instanceof THREE.Mesh && (child as THREE.Mesh).userData?.isSignFace
+      ) as THREE.Mesh | undefined;
+
+      if (signFace && this.sharedSignMaterials?.signFaces) {
+        const newMaterial = this.sharedSignMaterials.signFaces.get(newLimit);
+        if (newMaterial) {
+          signFace.material = newMaterial;
+        }
       }
     }
   }
