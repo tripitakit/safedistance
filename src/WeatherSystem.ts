@@ -79,6 +79,8 @@ export class WeatherSystem {
   private rainPositions: Float32Array | null = null;
   private rainVelocities: Float32Array | null = null;
   private rainColors: Float32Array | null = null; // For headlight reflection effect
+  private rainDrift: Float32Array | null = null; // Pre-cached horizontal drift per particle
+  private lastRainActiveCount: number = 0; // Track for conditional buffer updates
 
   // Snow particles
   private snowParticles: THREE.Points | null = null;
@@ -87,6 +89,7 @@ export class WeatherSystem {
   private snowVelocities: Float32Array | null = null;
   private snowDrift: Float32Array | null = null; // Horizontal drift per particle
   private snowColors: Float32Array | null = null; // For headlight reflection effect
+  private lastSnowActiveCount: number = 0; // Track for conditional buffer updates
 
   private currentWeather: WeatherState = 'clear';
   private targetWeather: WeatherState = 'clear';
@@ -144,6 +147,7 @@ export class WeatherSystem {
     this.rainPositions = new Float32Array(this.RAIN_COUNT * 3);
     this.rainVelocities = new Float32Array(this.RAIN_COUNT);
     this.rainColors = new Float32Array(this.RAIN_COUNT * 3); // RGB per particle
+    this.rainDrift = new Float32Array(this.RAIN_COUNT); // Pre-cached drift values
 
     // Initialize rain particles
     for (let i = 0; i < this.RAIN_COUNT; i++) {
@@ -151,6 +155,7 @@ export class WeatherSystem {
       this.rainPositions[i * 3 + 1] = Math.random() * this.PARTICLE_HEIGHT;
       this.rainPositions[i * 3 + 2] = (Math.random() - 0.5) * this.PARTICLE_AREA;
       this.rainVelocities[i] = 15 + Math.random() * 10; // Fall speed
+      this.rainDrift[i] = (Math.random() - 0.5) * 0.1; // Pre-cached horizontal drift
 
       // Default rain color (light blue-gray)
       this.rainColors[i * 3] = 0.67;     // R
@@ -436,7 +441,7 @@ export class WeatherSystem {
   }
 
   private updateRain(deltaTime: number): void {
-    if (!this.rainParticles || !this.rainPositions || !this.rainVelocities || !this.rainColors) return;
+    if (!this.rainParticles || !this.rainPositions || !this.rainVelocities || !this.rainColors || !this.rainDrift) return;
 
     const currentConfig = WEATHER_CONFIGS[this.currentWeather];
     const targetConfig = WEATHER_CONFIGS[this.targetWeather];
@@ -448,7 +453,13 @@ export class WeatherSystem {
 
     // Show/hide rain based on intensity
     this.rainParticles.visible = rainIntensity > 0;
-    if (rainIntensity <= 0) return;
+    if (rainIntensity <= 0) {
+      this.lastRainActiveCount = 0;
+      return;
+    }
+
+    // Calculate active particle count once
+    const activeCount = Math.floor(this.RAIN_COUNT * rainIntensity);
 
     // Update rain particle opacity based on intensity
     const material = this.rainParticles.material as THREE.PointsMaterial;
@@ -469,14 +480,8 @@ export class WeatherSystem {
     const beamMaxX = 8;     // Width of beam
     const beamMaxY = 6;     // Height of beam
 
-    // Animate rain falling
-    for (let i = 0; i < this.RAIN_COUNT; i++) {
-      // Only animate a portion based on intensity
-      if (i / this.RAIN_COUNT > rainIntensity) {
-        this.rainPositions[i * 3 + 1] = -100; // Hide excess particles
-        continue;
-      }
-
+    // Animate only active rain particles
+    for (let i = 0; i < activeCount; i++) {
       const x = this.rainPositions[i * 3];
       const y = this.rainPositions[i * 3 + 1];
       const z = this.rainPositions[i * 3 + 2];
@@ -484,20 +489,22 @@ export class WeatherSystem {
       // Move rain down
       this.rainPositions[i * 3 + 1] -= this.rainVelocities[i] * deltaTime;
 
-      // Add slight horizontal drift
-      this.rainPositions[i * 3] += (Math.random() - 0.5) * 0.1;
+      // Add pre-cached horizontal drift (no Math.random() per frame)
+      this.rainPositions[i * 3] += this.rainDrift[i];
 
       // Rush toward player based on car speed (particles move in +Z direction)
       this.rainPositions[i * 3 + 2] += speedRushFactor * deltaTime;
 
       // Headlight reflection effect
+      let inBeam = false;
       if (this.headlightsOn) {
         // Check if particle is in headlight beam area
         const inBeamZ = z > beamMinZ && z < beamMaxZ;
         const inBeamX = Math.abs(x) < beamMaxX;
         const inBeamY = y > 0 && y < beamMaxY;
+        inBeam = inBeamZ && inBeamX && inBeamY;
 
-        if (inBeamZ && inBeamX && inBeamY) {
+        if (inBeam) {
           // Calculate intensity based on position in beam (brighter near center)
           const zFactor = 1 - Math.abs(z - beamMinZ / 2) / (-beamMinZ);
           const xFactor = 1 - Math.abs(x) / beamMaxX;
@@ -508,14 +515,10 @@ export class WeatherSystem {
           this.rainColors[i * 3] = 0.67 + beamIntensity * 0.33;     // R (up to 1.0)
           this.rainColors[i * 3 + 1] = 0.67 + beamIntensity * 0.33; // G (up to 1.0)
           this.rainColors[i * 3 + 2] = 0.8 + beamIntensity * 0.2;   // B (up to 1.0)
-        } else {
-          // Default rain color outside beam
-          this.rainColors[i * 3] = 0.67;
-          this.rainColors[i * 3 + 1] = 0.67;
-          this.rainColors[i * 3 + 2] = 0.8;
         }
-      } else {
-        // Headlights off - default color
+      }
+      if (!inBeam) {
+        // Default rain color outside beam or headlights off
         this.rainColors[i * 3] = 0.67;
         this.rainColors[i * 3 + 1] = 0.67;
         this.rainColors[i * 3 + 2] = 0.8;
@@ -527,8 +530,18 @@ export class WeatherSystem {
         this.rainPositions[i * 3 + 1] = Math.random() * this.PARTICLE_HEIGHT;
         // Spawn ahead of player (negative Z) so they rush toward us
         this.rainPositions[i * 3 + 2] = -this.PARTICLE_AREA / 2 + (Math.random() - 0.5) * 20;
+        // New random drift for respawned particle
+        this.rainDrift[i] = (Math.random() - 0.5) * 0.1;
       }
     }
+
+    // Hide excess particles only when active count changes
+    if (activeCount < this.lastRainActiveCount) {
+      for (let i = activeCount; i < this.lastRainActiveCount; i++) {
+        this.rainPositions[i * 3 + 1] = -100;
+      }
+    }
+    this.lastRainActiveCount = activeCount;
 
     // Mark for GPU update
     this.rainGeometry!.attributes.position.needsUpdate = true;
@@ -548,7 +561,13 @@ export class WeatherSystem {
 
     // Show/hide snow based on intensity
     this.snowParticles.visible = snowIntensity > 0;
-    if (snowIntensity <= 0) return;
+    if (snowIntensity <= 0) {
+      this.lastSnowActiveCount = 0;
+      return;
+    }
+
+    // Calculate active particle count once
+    const activeCount = Math.floor(this.SNOW_COUNT * snowIntensity);
 
     // Update snow particle opacity based on intensity
     const material = this.snowParticles.material as THREE.PointsMaterial;
@@ -569,14 +588,8 @@ export class WeatherSystem {
     const beamMaxX = 8;     // Width of beam
     const beamMaxY = 6;     // Height of beam
 
-    // Animate snow falling with gentle drift
-    for (let i = 0; i < this.SNOW_COUNT; i++) {
-      // Only animate a portion based on intensity
-      if (i / this.SNOW_COUNT > snowIntensity) {
-        this.snowPositions[i * 3 + 1] = -100; // Hide excess particles
-        continue;
-      }
-
+    // Animate only active snow particles
+    for (let i = 0; i < activeCount; i++) {
       const x = this.snowPositions[i * 3];
       const y = this.snowPositions[i * 3 + 1];
       const z = this.snowPositions[i * 3 + 2];
@@ -584,9 +597,9 @@ export class WeatherSystem {
       // Move snow down (slower than rain)
       this.snowPositions[i * 3 + 1] -= this.snowVelocities[i] * deltaTime;
 
-      // Add gentle swaying/drifting motion
+      // Add gentle swaying/drifting motion (use pre-cached drift, no Math.random per frame)
       const driftX = this.snowDrift[i * 2];
-      this.snowPositions[i * 3] += driftX * deltaTime + (Math.random() - 0.5) * 0.05;
+      this.snowPositions[i * 3] += driftX * deltaTime;
 
       // Rush toward player based on car speed (particles move in +Z direction)
       // Combined with natural drift for more chaotic blizzard feel
@@ -594,13 +607,15 @@ export class WeatherSystem {
       this.snowPositions[i * 3 + 2] += speedRushFactor * deltaTime + driftZ * deltaTime;
 
       // Headlight reflection effect
+      let inBeam = false;
       if (this.headlightsOn) {
         // Check if particle is in headlight beam area
         const inBeamZ = z > beamMinZ && z < beamMaxZ;
         const inBeamX = Math.abs(x) < beamMaxX;
         const inBeamY = y > 0 && y < beamMaxY;
+        inBeam = inBeamZ && inBeamX && inBeamY;
 
-        if (inBeamZ && inBeamX && inBeamY) {
+        if (inBeam) {
           // Calculate intensity based on position in beam (brighter near center)
           const zFactor = 1 - Math.abs(z - beamMinZ / 2) / (-beamMinZ);
           const xFactor = 1 - Math.abs(x) / beamMaxX;
@@ -611,14 +626,10 @@ export class WeatherSystem {
           this.snowColors[i * 3] = 0.9 + beamIntensity * 0.1;     // R (up to 1.0)
           this.snowColors[i * 3 + 1] = 0.9 + beamIntensity * 0.1; // G (up to 1.0)
           this.snowColors[i * 3 + 2] = 1.0;                        // B (stays bright)
-        } else {
-          // Default snow color outside beam (slightly dimmer)
-          this.snowColors[i * 3] = 0.9;
-          this.snowColors[i * 3 + 1] = 0.9;
-          this.snowColors[i * 3 + 2] = 1.0;
         }
-      } else {
-        // Headlights off - default color
+      }
+      if (!inBeam) {
+        // Default snow color outside beam or headlights off
         this.snowColors[i * 3] = 0.9;
         this.snowColors[i * 3 + 1] = 0.9;
         this.snowColors[i * 3 + 2] = 1.0;
@@ -636,9 +647,46 @@ export class WeatherSystem {
       }
     }
 
+    // Hide excess particles only when active count changes
+    if (activeCount < this.lastSnowActiveCount) {
+      for (let i = activeCount; i < this.lastSnowActiveCount; i++) {
+        this.snowPositions[i * 3 + 1] = -100;
+      }
+    }
+    this.lastSnowActiveCount = activeCount;
+
     // Mark for GPU update
     this.snowGeometry!.attributes.position.needsUpdate = true;
     this.snowGeometry!.attributes.color.needsUpdate = true;
+  }
+
+  /**
+   * Pre-warm particle systems to force shader compilation.
+   * Makes rain and snow particles visible briefly then hides them.
+   */
+  preWarmParticles(): void {
+    // Make rain particles visible briefly to compile their shaders
+    if (this.rainParticles) {
+      this.rainParticles.visible = true;
+    }
+    // Make snow particles visible briefly to compile their shaders
+    if (this.snowParticles) {
+      this.snowParticles.visible = true;
+    }
+
+    // Note: Caller should render once, then call hidePreWarmParticles()
+  }
+
+  /**
+   * Hide particles after pre-warming render pass
+   */
+  hidePreWarmParticles(): void {
+    if (this.rainParticles) {
+      this.rainParticles.visible = false;
+    }
+    if (this.snowParticles) {
+      this.snowParticles.visible = false;
+    }
   }
 
   /**

@@ -30,6 +30,7 @@ class SafeDistanceSimulator {
   private streetlightBulbs: THREE.Mesh[] = [];  // Visual bulbs on poles
   private dynamicStreetlights: THREE.PointLight[] = [];  // Only 4 active lights near player
   private readonly DYNAMIC_LIGHT_COUNT = 4;
+  private lastBulbColor: number = 0;  // Cache to avoid updating bulbs every frame
 
   private lastTime: number = 0;
   private frameCount: number = 0; // For mirror render optimization (every 2nd frame)
@@ -106,6 +107,7 @@ class SafeDistanceSimulator {
   private notificationTitleElement!: HTMLElement;
   private notificationBodyElement!: HTMLElement;
   private phoneClockElement!: HTMLElement;
+  private phoneTimeElement!: Element | null;  // Cached status bar time element
   private phoneNotificationTimer: number = 0;
   private phoneNotificationActive: boolean = false;
   private readonly PHONE_MIN_INTERVAL = 25; // Minimum seconds between notifications
@@ -351,6 +353,8 @@ class SafeDistanceSimulator {
       canvas: document.getElementById('canvas') as HTMLCanvasElement,
       antialias: true
     });
+    // Optimize for high-DPI displays (cap at 2 to prevent GPU waste on 4K+ screens)
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     // Get HUD elements
     this.warningTooCloseElement = document.getElementById('warningTooClose')!;
@@ -413,6 +417,7 @@ class SafeDistanceSimulator {
     this.notificationTitleElement = document.getElementById('notificationTitle')!;
     this.notificationBodyElement = document.getElementById('notificationBody')!;
     this.phoneClockElement = document.getElementById('phoneClock')!;
+    this.phoneTimeElement = document.querySelector('.phone-time');  // Cache status bar element
     this.initPhoneSystem();
 
     // Setup restart button
@@ -515,6 +520,10 @@ class SafeDistanceSimulator {
       }
     });
 
+    // Pre-warm renderer to compile all shaders before gameplay
+    // This prevents stuttering in the first 2km
+    this.preWarmRenderer();
+
     this.animate(0);
   }
 
@@ -537,6 +546,61 @@ class SafeDistanceSimulator {
         }, 500);
       }, 100);
     }
+  }
+
+  /**
+   * Pre-warm the renderer by compiling all shaders before gameplay starts.
+   * This prevents stuttering during the first 2km when objects are first rendered.
+   */
+  private preWarmRenderer(): void {
+    // 1. Compile all shaders for objects currently in the scene
+    this.renderer.compile(this.scene, this.camera);
+
+    // 2. Pre-warm vehicle pools by temporarily adding them to scene and rendering
+    const tempPosition = new THREE.Vector3(0, -100, -500); // Off-screen position
+    const allPooledVehicles: THREE.Group[] = [
+      ...this.oncomingCarPool,
+      ...this.oncomingVanPool,
+      ...this.oncomingTruckPool,
+      ...this.oncomingSemiPool
+    ];
+
+    // Add all pooled vehicles to scene temporarily
+    for (const vehicle of allPooledVehicles) {
+      vehicle.position.copy(tempPosition);
+      vehicle.visible = true;
+      this.scene.add(vehicle);
+    }
+
+    // 3. Pre-warm weather particles by making them visible briefly
+    // This forces shader compilation for rain and snow materials
+    this.weatherSystem.preWarmParticles();
+
+    // 4. Pre-warm particle system by emitting test particles
+    this.particleSystem.emit({
+      type: 'dust',
+      position: tempPosition,
+      count: 5
+    });
+    this.particleSystem.emit({
+      type: 'sparks',
+      position: tempPosition,
+      count: 5
+    });
+
+    // Render once to compile all shaders
+    this.renderer.render(this.scene, this.camera);
+
+    // Clean up: remove pooled vehicles and clear test particles
+    for (const vehicle of allPooledVehicles) {
+      this.scene.remove(vehicle);
+      vehicle.visible = false;
+    }
+    this.particleSystem.clear();
+    this.weatherSystem.hidePreWarmParticles();
+
+    // 5. Final shader compilation pass
+    this.renderer.compile(this.scene, this.camera);
   }
 
   private setupScene(): void {
@@ -877,7 +941,7 @@ class SafeDistanceSimulator {
     });
   }
 
-  private updateRearCar(deltaTime: number): void {
+  private updateRearCar(deltaTime: number, currentTime: number): void {
     if (!this.rearCar || this.isGameOver || this.isCrashing) return;
 
     const playerSpeed = this.playerVehicle.getVelocityKmh();
@@ -974,7 +1038,7 @@ class SafeDistanceSimulator {
     // Clamp visual distance to minimum 3.5m to prevent car models from overlapping
     const visualDistance = Math.max(3.5, this.rearCarDistance);
     this.rearCar.position.z = playerZ + visualDistance;
-    this.rearCar.position.x = 2.5 + (Math.sin(Date.now() * 0.0015) * 0.3); // Right lane with slight weaving
+    this.rearCar.position.x = 2.5 + (Math.sin(currentTime * 0.0015) * 0.3); // Right lane with slight weaving
 
     // Aggressive headlight flashing when tailgating close
     this.updateRearCarHeadlightFlash(deltaTime, currentDistance);
@@ -1385,13 +1449,13 @@ class SafeDistanceSimulator {
     const now = new Date();
     const hours = now.getHours().toString().padStart(2, '0');
     const minutes = now.getMinutes().toString().padStart(2, '0');
+    const timeStr = `${hours}:${minutes}`;
     if (this.phoneClockElement) {
-      this.phoneClockElement.textContent = `${hours}:${minutes}`;
+      this.phoneClockElement.textContent = timeStr;
     }
-    // Also update the status bar time
-    const phoneTimeElement = document.querySelector('.phone-time');
-    if (phoneTimeElement) {
-      phoneTimeElement.textContent = `${hours}:${minutes}`;
+    // Use cached status bar element (avoid querySelector every second)
+    if (this.phoneTimeElement) {
+      this.phoneTimeElement.textContent = timeStr;
     }
   }
 
@@ -2062,7 +2126,7 @@ class SafeDistanceSimulator {
     this.oncomingCarSpeeds.push(speed);
   }
 
-  private updateOncomingTraffic(deltaTime: number): void {
+  private updateOncomingTraffic(deltaTime: number, currentTime: number): void {
     if (this.isGameOver || this.isCrashing) return;
 
     const playerPos = this.playerVehicle.position;
@@ -2081,8 +2145,8 @@ class SafeDistanceSimulator {
       // Update 3D position
       this.oncomingCars[i].position.z = -this.oncomingCarPositions[i];
 
-      // Add slight random weave for realism
-      this.oncomingCars[i].position.x = this.ONCOMING_LANE_X + Math.sin(Date.now() * 0.001 + i) * 0.2;
+      // Add slight random weave for realism (use cached currentTime instead of Date.now() per car)
+      this.oncomingCars[i].position.x = this.ONCOMING_LANE_X + Math.sin(currentTime * 0.001 + i) * 0.2;
 
       // Return to pool if passed player - swap with last element and pop (O(1) instead of O(n))
       if (this.oncomingCarPositions[i] < playerPos - this.ONCOMING_DESPAWN_BEHIND) {
@@ -4116,8 +4180,8 @@ class SafeDistanceSimulator {
     this.updateSpeedLimits();
 
     // Update rear car, oncoming traffic, and mirrors
-    this.updateRearCar(clampedDelta);
-    this.updateOncomingTraffic(clampedDelta);
+    this.updateRearCar(clampedDelta, currentTime);
+    this.updateOncomingTraffic(clampedDelta, currentTime);
 
     // Update particles
     this.updateParticles(clampedDelta);
@@ -4147,9 +4211,12 @@ class SafeDistanceSimulator {
     const streetlightIntensity = Math.max(0, (darkness - 0.3) * 3); // Start at darkness 0.3, full at 0.6
     const bulbColor = streetlightIntensity > 0 ? 0xffaa44 : 0x333333; // Warm orange when lit
 
-    // Update all bulb colors (visual only, no PointLights)
-    for (const bulb of this.streetlightBulbs) {
-      (bulb.material as THREE.MeshBasicMaterial).color.setHex(bulbColor);
+    // Only update bulb colors when color actually changes (avoid loop every frame)
+    if (bulbColor !== this.lastBulbColor) {
+      this.lastBulbColor = bulbColor;
+      for (const bulb of this.streetlightBulbs) {
+        (bulb.material as THREE.MeshBasicMaterial).color.setHex(bulbColor);
+      }
     }
 
     // Position dynamic lights near player (only 4 lights for performance)

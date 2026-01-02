@@ -11,9 +11,10 @@ This educational simulator helps visualize how braking distance, reaction time, 
 ### Core Gameplay
 - **Realistic Physics**: Simulates vehicle mass, acceleration, braking force, drag, and rolling resistance
 - **First-Person View**: Immersive 3D perspective from inside the player's vehicle with visible headlight beams
-- **Dynamic Lead Vehicle**: AI-controlled car that accelerates to 130-180 km/h and applies variable braking
+- **Dynamic Lead Vehicle**: AI-controlled car with realistic tail lights and brake lights that respond to speed limits
+- **Speed Limit Signs**: Progressive speed limits (70, 90, 110, 130 km/h) that change as you drive
 - **Tailgating Rear Car**: An aggressive driver behind you that can rear-end your vehicle
-- **Oncoming Traffic**: Random vehicles in the opposite lane add to the atmosphere
+- **Oncoming Traffic**: Variety of vehicles (cars, vans, trucks, semi-trucks) in the opposite lane
 - **Progressive Brake Control**: Hold brake key for increased braking power (10-100% over 1 second)
 - **Safety Warnings**: Visual overlay alerts when following distance becomes unsafe (TOO CLOSE / SAFE DISTANCE)
 - **Collision Detection**: Realistic crash response with detailed damage assessment
@@ -42,11 +43,17 @@ This educational simulator helps visualize how braking distance, reaction time, 
 - **Crash Sounds**: Multi-layered crash audio based on impact severity
 - **Weather Audio**: Rain sounds and wind noise that scale with intensity and speed
 
+### Environment
+- **Varied Buildings**: Residential houses, shops with awnings, warehouses, factories with chimneys, and silos
+- **Road Infrastructure**: Highway with guardrails, emergency lanes, streetlights, and bridges
+- **Dynamic Elements**: Trees, bushes, and grass areas alongside the road
+
 ### Visual Effects
 - **Camera Effects**: Speed-based FOV increase, subtle head bob, and collision shake
 - **Particle System**: Dust, sparks, debris, and smoke effects
 - **Crash Flash**: Visual feedback on collision
 - **Tension Overlay**: Screen effects when following too closely
+- **Brake Lights**: Lead vehicle tail lights glow brighter when braking
 
 ### Crash Report & Scoring
 - **Detailed Crash Analysis**: Impact force (kN), speed differential, damage assessment
@@ -72,6 +79,12 @@ This educational simulator helps visualize how braking distance, reaction time, 
 - **Vite** - Fast development and building
 - **Web Audio API** - Procedural audio synthesis
 - **sql.js** - High score persistence
+
+### Performance Optimizations
+- **Object Pooling**: Pre-allocated pools for vehicles (cars, vans, trucks, semi-trucks) to eliminate runtime allocations
+- **Shared Geometries**: Environment objects (trees, buildings, streetlights) use shared geometries and materials
+- **Texture Caching**: Speed limit sign textures pre-generated at startup
+- **Instanced Rendering**: Guardrail posts use instanced meshes for efficient rendering
 
 ## Getting Started
 
@@ -126,7 +139,8 @@ The simulator calculates safe following distance based on:
 - Minimum safe distance: 10 meters
 
 ### Lead Vehicle AI Behavior
-- Accelerates gradually to target speeds (130-180 km/h)
+- **Speed Limit Aware**: Respects posted speed limits (can exceed by up to 20%)
+- Accelerates gradually to target speeds based on current limit
 - Cruises at target speed with minor adjustments
 - Randomly applies braking (10-100% intensity)
 - **Weather-aware**: Brakes more frequently and harder in poor conditions

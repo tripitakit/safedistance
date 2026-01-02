@@ -80,14 +80,16 @@ export class ParticleSystem {
   private colors: Float32Array;
   private sizes: Float32Array;
   private alphas: Float32Array;
-  private poolSize: number;
+
+  // Track active particle indices for efficient iteration
+  private activeIndices: Set<number> = new Set();
+  private buffersDirty: boolean = false;
 
   // Reusable temp vector to avoid GC allocations in update loop
   private static readonly tempVelocity = new THREE.Vector3();
 
   constructor(scene: THREE.Scene, poolSize: number = 500) {
     this.scene = scene;
-    this.poolSize = poolSize;
 
     // Initialize particle pool
     for (let i = 0; i < poolSize; i++) {
@@ -140,12 +142,17 @@ export class ParticleSystem {
     const typeConfig = PARTICLE_CONFIGS[config.type];
 
     for (let i = 0; i < count; i++) {
-      const particle = this.getInactiveParticle();
-      if (!particle) return; // Pool exhausted
+      const idx = this.getInactiveParticleIndex();
+      if (idx < 0) return; // Pool exhausted
 
+      const particle = this.particles[idx];
       particle.active = true;
       particle.type = config.type;
       particle.position.copy(config.position);
+
+      // Track active particle index
+      this.activeIndices.add(idx);
+      this.buffersDirty = true;
 
       // Randomize velocity
       if (config.velocity) {
@@ -268,28 +275,32 @@ export class ParticleSystem {
   }
 
   /**
-   * Update all active particles
+   * Update all active particles (optimized to only iterate active indices)
    */
   update(deltaTime: number): void {
-    for (let i = 0; i < this.poolSize; i++) {
+    // Skip update if no active particles
+    if (this.activeIndices.size === 0) {
+      return;
+    }
+
+    const indicesToRemove: number[] = [];
+
+    // Only iterate over active particles
+    for (const i of this.activeIndices) {
       const particle = this.particles[i];
-
-      if (!particle.active) {
-        // Hide inactive particles
-        this.positions[i * 3] = 0;
-        this.positions[i * 3 + 1] = -1000; // Below ground
-        this.positions[i * 3 + 2] = 0;
-        this.sizes[i] = 0;
-        this.alphas[i] = 0;
-        continue;
-      }
-
       const config = PARTICLE_CONFIGS[particle.type];
 
       // Update life
       particle.life -= deltaTime;
       if (particle.life <= 0) {
         particle.active = false;
+        // Hide the particle in buffers
+        this.positions[i * 3] = 0;
+        this.positions[i * 3 + 1] = -1000;
+        this.positions[i * 3 + 2] = 0;
+        this.sizes[i] = 0;
+        this.alphas[i] = 0;
+        indicesToRemove.push(i);
         continue;
       }
 
@@ -326,20 +337,28 @@ export class ParticleSystem {
       this.alphas[i] = particle.alpha;
     }
 
-    // Mark attributes as needing update
-    this.geometry.attributes.position.needsUpdate = true;
-    this.geometry.attributes.color.needsUpdate = true;
-    this.geometry.attributes.size.needsUpdate = true;
-    this.geometry.attributes.alpha.needsUpdate = true;
+    // Remove expired particles from active set
+    for (const idx of indicesToRemove) {
+      this.activeIndices.delete(idx);
+    }
+
+    // Only mark buffers dirty if we had active particles
+    if (this.buffersDirty || indicesToRemove.length > 0) {
+      this.geometry.attributes.position.needsUpdate = true;
+      this.geometry.attributes.color.needsUpdate = true;
+      this.geometry.attributes.size.needsUpdate = true;
+      this.geometry.attributes.alpha.needsUpdate = true;
+      this.buffersDirty = false;
+    }
   }
 
-  private getInactiveParticle(): Particle | null {
-    for (const particle of this.particles) {
-      if (!particle.active) {
-        return particle;
+  private getInactiveParticleIndex(): number {
+    for (let i = 0; i < this.particles.length; i++) {
+      if (!this.particles[i].active) {
+        return i;
       }
     }
-    return null;
+    return -1; // Pool exhausted
   }
 
   /**
@@ -349,6 +368,8 @@ export class ParticleSystem {
     for (const particle of this.particles) {
       particle.active = false;
     }
+    this.activeIndices.clear();
+    this.buffersDirty = false;
   }
 
   /**
