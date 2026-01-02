@@ -105,71 +105,52 @@ export class Vehicle {
       group.add(rim);
     });
 
-    // Add mirrors to PLAYER vehicle only (blue car)
+    // Add mirrors and headlights to PLAYER vehicle only (blue car)
     if (color === 0x0000ff) {
-      // Mirror frame material
+      // Mirror frame material (shared)
       const mirrorFrameMaterial = new THREE.MeshStandardMaterial({
         color: 0x111111,
         roughness: 0.3,
         metalness: 0.8
       });
 
-      // LEFT SIDE MIRROR - slim depth
+      // LEFT SIDE MIRROR
       const leftMirrorFrame = new THREE.BoxGeometry(0.40, 0.14, 0.02);
       const leftMirror = new THREE.Mesh(leftMirrorFrame, mirrorFrameMaterial);
       leftMirror.position.set(-0.86, 1.05, -0.25);
       group.add(leftMirror);
 
-      // Left mirror surface with UV offset for center-magnify effect
-      const leftMirrorGeom = new THREE.PlaneGeometry(0.36, 0.11);
-      // Modify UVs to show center portion of texture (magnify center/road area)
-      const leftUVs = leftMirrorGeom.attributes.uv;
-      for (let i = 0; i < leftUVs.count; i++) {
-        const u = leftUVs.getX(i);
-        // Compress U range to center portion (0.25-0.75 instead of 0-1)
-        leftUVs.setX(i, 0.25 + u * 0.5);
-      }
       const leftMirrorSurface = new THREE.Mesh(
-        leftMirrorGeom,
+        new THREE.PlaneGeometry(0.36, 0.11),
         new THREE.MeshBasicMaterial({ color: 0x333344, side: THREE.DoubleSide })
       );
       leftMirrorSurface.position.set(-0.86, 1.05, -0.23);
-      leftMirrorSurface.rotation.y = Math.PI; // Face straight backward
+      leftMirrorSurface.rotation.y = Math.PI;
       leftMirrorSurface.userData.isMirror = true;
       leftMirrorSurface.userData.mirrorType = 'left';
       group.add(leftMirrorSurface);
 
-      // RIGHT SIDE MIRROR - slender horizontal, moved 25% toward center
+      // RIGHT SIDE MIRROR
       const rightMirror = new THREE.Mesh(leftMirrorFrame.clone(), mirrorFrameMaterial);
       rightMirror.position.set(0.86, 1.05, -0.25);
       group.add(rightMirror);
 
-      // Right mirror surface with UV offset for center-magnify effect
-      const rightMirrorGeom = new THREE.PlaneGeometry(0.36, 0.11);
-      // Modify UVs to show center portion of texture (magnify center/road area)
-      const rightUVs = rightMirrorGeom.attributes.uv;
-      for (let i = 0; i < rightUVs.count; i++) {
-        const u = rightUVs.getX(i);
-        // Compress U range to center portion (0.25-0.75 instead of 0-1)
-        rightUVs.setX(i, 0.25 + u * 0.5);
-      }
       const rightMirrorSurface = new THREE.Mesh(
-        rightMirrorGeom,
+        new THREE.PlaneGeometry(0.36, 0.11),
         new THREE.MeshBasicMaterial({ color: 0x333344, side: THREE.DoubleSide })
       );
       rightMirrorSurface.position.set(0.86, 1.05, -0.23);
-      rightMirrorSurface.rotation.y = Math.PI; // Face straight backward
+      rightMirrorSurface.rotation.y = Math.PI;
       rightMirrorSurface.userData.isMirror = true;
       rightMirrorSurface.userData.mirrorType = 'right';
       group.add(rightMirrorSurface);
 
-      // CENTER REARVIEW MIRROR - slim depth
+      // CENTER REARVIEW MIRROR
       const centerMirrorFrame = new THREE.BoxGeometry(0.7, 0.25, 0.02);
       const centerMirror = new THREE.Mesh(centerMirrorFrame, mirrorFrameMaterial);
       centerMirror.position.set(0, 1.5, -0.4);
       group.add(centerMirror);
 
-      // Center mirror surface - facing backward
       const centerMirrorSurface = new THREE.Mesh(
         new THREE.PlaneGeometry(0.65, 0.20),
         new THREE.MeshBasicMaterial({ color: 0x333344, side: THREE.DoubleSide })

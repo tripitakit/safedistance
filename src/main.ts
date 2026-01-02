@@ -27,13 +27,11 @@ class SafeDistanceSimulator {
   private bridgeTexts: THREE.Sprite[] = [];
 
   // Streetlight system - only 4 dynamic lights that follow the player
-  private streetlightBulbs: THREE.Mesh[] = [];  // Visual bulbs on poles
   private dynamicStreetlights: THREE.PointLight[] = [];  // Only 4 active lights near player
   private readonly DYNAMIC_LIGHT_COUNT = 4;
   private lastBulbColor: number = 0;  // Cache to avoid updating bulbs every frame
 
   private lastTime: number = 0;
-  private frameCount: number = 0; // For mirror render optimization (every 2nd frame)
 
   // HUD elements
   private warningTooCloseElement: HTMLElement;
@@ -160,9 +158,6 @@ class SafeDistanceSimulator {
   private rearCarFlashState: number = 0; // 0 = not flashing, 1-6 = flash sequence
   private rearCarFlashTimer: number = 0;
   private rearCarNextFlashTime: number = 0; // When to potentially start next flash sequence
-
-  // Mirror meshes for brightness adjustment during high beam flashes
-  private mirrorMeshes: THREE.Mesh[] = [];
 
   // Oncoming traffic system (left lane) with object pooling
   private oncomingCars: THREE.Group[] = [];  // Active cars in scene
@@ -311,6 +306,7 @@ class SafeDistanceSimulator {
   private sharedStreetlightMaterials: {
     pole: THREE.MeshStandardMaterial;
     housing: THREE.MeshStandardMaterial;
+    bulb: THREE.MeshBasicMaterial;
   } | null = null;
 
   // Shared geometries and materials for speed limit signs
@@ -322,6 +318,8 @@ class SafeDistanceSimulator {
   private sharedSignMaterials: {
     pole: THREE.MeshStandardMaterial;
     back: THREE.MeshStandardMaterial;
+    bridgeTube: THREE.MeshStandardMaterial;
+    signFaces: Map<number, THREE.MeshBasicMaterial>;
   } | null = null;
 
   // Audio engine
@@ -588,13 +586,34 @@ class SafeDistanceSimulator {
       count: 5
     });
 
+    // 5. Pre-warm bridge and sign materials by creating temporary meshes
+    const tempBridgeGeom = new THREE.CylinderGeometry(0.12, 0.12, 1, 16);
+    const tempBridgeMesh = new THREE.Mesh(tempBridgeGeom, this.sharedSignMaterials!.bridgeTube);
+    tempBridgeMesh.position.copy(tempPosition);
+    this.scene.add(tempBridgeMesh);
+
+    // Pre-warm all speed limit sign face materials
+    const tempSignMeshes: THREE.Mesh[] = [];
+    for (const signMaterial of this.sharedSignMaterials!.signFaces.values()) {
+      const mesh = new THREE.Mesh(this.sharedSignGeometries!.face, signMaterial);
+      mesh.position.copy(tempPosition);
+      this.scene.add(mesh);
+      tempSignMeshes.push(mesh);
+    }
+
     // Render once to compile all shaders
     this.renderer.render(this.scene, this.camera);
 
-    // Clean up: remove pooled vehicles and clear test particles
+    // Clean up: remove pooled vehicles, temp meshes, and clear test particles
     for (const vehicle of allPooledVehicles) {
       this.scene.remove(vehicle);
       vehicle.visible = false;
+      vehicle.position.set(0, 0, 0);  // Reset position (was set to Y=-100 for off-screen)
+    }
+    this.scene.remove(tempBridgeMesh);
+    tempBridgeGeom.dispose();
+    for (const mesh of tempSignMeshes) {
+      this.scene.remove(mesh);
     }
     this.particleSystem.clear();
     this.weatherSystem.hidePreWarmParticles();
@@ -886,14 +905,14 @@ class SafeDistanceSimulator {
   }
 
   private setupMirrors(): void {
-    // Create render target for center rearview mirror (full rear view)
+    // Create render target for center rearview mirror
     this.mirrorRenderTarget = new THREE.WebGLRenderTarget(512, 256, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat
     });
 
-    // Create render targets for side mirrors (partial side views)
+    // Create render targets for side mirrors
     this.leftMirrorRenderTarget = new THREE.WebGLRenderTarget(256, 128, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
@@ -913,8 +932,7 @@ class SafeDistanceSimulator {
     this.leftMirrorCamera = new THREE.PerspectiveCamera(40, 2, 0.1, 150);
     this.rightMirrorCamera = new THREE.PerspectiveCamera(40, 2, 0.1, 150);
 
-    // Find and update mirror surfaces with appropriate render textures
-    this.mirrorMeshes = [];
+    // Find and update mirror surfaces with render textures
     this.playerVehicle.mesh.children.forEach(child => {
       if (child instanceof THREE.Mesh && child.userData.isMirror) {
         const mirrorType = child.userData.mirrorType;
@@ -928,15 +946,10 @@ class SafeDistanceSimulator {
           texture = this.mirrorRenderTarget.texture;
         }
 
-        // Replace material with one that uses the appropriate render target
-        // DoubleSide ensures visibility from driver's perspective
         child.material = new THREE.MeshBasicMaterial({
           map: texture,
           side: THREE.DoubleSide
         });
-
-        // Store reference for brightness adjustment during high beam flashes
-        this.mirrorMeshes.push(child);
       }
     });
   }
@@ -1108,18 +1121,6 @@ class SafeDistanceSimulator {
     for (const light of this.rearCarPointLights) {
       light.intensity = lightIntensity;
     }
-
-    // Brighten mirrors when high beams flash (simulates being blinded)
-    for (const mirror of this.mirrorMeshes) {
-      const material = mirror.material as THREE.MeshBasicMaterial;
-      if (highBeamsOn) {
-        // Bright wash-out effect - simulate eye being flashed
-        material.color.setRGB(2.5, 2.5, 2.2);
-      } else {
-        // Normal mirror - neutral white
-        material.color.setRGB(1, 1, 1);
-      }
-    }
   }
 
   private triggerRearCollision(): void {
@@ -1268,6 +1269,15 @@ class SafeDistanceSimulator {
       this.speedLimitTextures.set(limit, texture);
     });
 
+    // Pre-create sign face materials for each speed limit (for shader pre-warming)
+    for (const [limit, texture] of this.speedLimitTextures) {
+      this.sharedSignMaterials!.signFaces.set(limit, new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        side: THREE.DoubleSide
+      }));
+    }
+
     // Pre-generate truck decoration textures
     this.initTruckDecorationTextures();
   }
@@ -1412,7 +1422,8 @@ class SafeDistanceSimulator {
     // Streetlight materials
     this.sharedStreetlightMaterials = {
       pole: new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.4, metalness: 0.6 }),
-      housing: new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3, metalness: 0.7 })
+      housing: new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3, metalness: 0.7 }),
+      bulb: new THREE.MeshBasicMaterial({ color: 0x333333 }) // Shared for all bulbs, color updated based on darkness
     };
 
     // Speed limit sign geometries
@@ -1423,10 +1434,16 @@ class SafeDistanceSimulator {
       back: new THREE.CircleGeometry(signRadius, 32)
     };
 
-    // Speed limit sign materials
+    // Speed limit sign and bridge materials
     this.sharedSignMaterials = {
       pole: new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.6, roughness: 0.4 }),
-      back: new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.7, side: THREE.DoubleSide })
+      back: new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.7, side: THREE.DoubleSide }),
+      bridgeTube: new THREE.MeshStandardMaterial({
+        color: 0x555555,
+        metalness: 0.8,
+        roughness: 0.3
+      }),
+      signFaces: new Map()  // Populated in initSpeedLimitTextures after textures are created
     };
   }
 
@@ -2193,59 +2210,44 @@ class SafeDistanceSimulator {
     this.playerVehicle.mesh.visible = false;
 
     // === CENTER REARVIEW MIRROR ===
-    // Position rear camera - flat telephoto view for minimal perspective distortion
     this.rearCamera.position.set(
       playerPos.x,
       playerPos.y + 1.2,
-      playerPos.z - 2 // Position slightly in front, looking back
+      playerPos.z - 2
     );
-
-    // Look backward (toward the rear car) - flat angle
     this.rearCamera.lookAt(
       playerPos.x,
       playerPos.y + 1.2,
       playerPos.z + 100
     );
-
-    // Render center mirror
     this.renderer.setRenderTarget(this.mirrorRenderTarget);
     this.renderer.render(this.scene, this.rearCamera);
 
     // === LEFT SIDE MIRROR ===
-    // Position at left side of car, looking backward with slight left offset
     this.leftMirrorCamera.position.set(
-      playerPos.x - 0.9, // Left side of car
+      playerPos.x - 0.9,
       playerPos.y + 1.1,
       playerPos.z - 0.5
     );
-
-    // Look backward (positive Z) with slight outward angle to the left
     this.leftMirrorCamera.lookAt(
-      playerPos.x - 3, // Offset left to show left side of road behind
+      playerPos.x - 3,
       playerPos.y + 0.9,
-      playerPos.z + 100 // Look BEHIND (positive Z = behind the car)
+      playerPos.z + 100
     );
-
-    // Render left mirror
     this.renderer.setRenderTarget(this.leftMirrorRenderTarget);
     this.renderer.render(this.scene, this.leftMirrorCamera);
 
     // === RIGHT SIDE MIRROR ===
-    // Position at right side of car, looking backward with slight right offset
     this.rightMirrorCamera.position.set(
-      playerPos.x + 0.9, // Right side of car
+      playerPos.x + 0.9,
       playerPos.y + 1.1,
       playerPos.z - 0.5
     );
-
-    // Look backward (positive Z) with slight outward angle to the right
     this.rightMirrorCamera.lookAt(
-      playerPos.x + 3, // Offset right to show right side of road behind
+      playerPos.x + 3,
       playerPos.y + 0.9,
-      playerPos.z + 100 // Look BEHIND (positive Z = behind the car)
+      playerPos.z + 100
     );
-
-    // Render right mirror
     this.renderer.setRenderTarget(this.rightMirrorRenderTarget);
     this.renderer.render(this.scene, this.rightMirrorCamera);
 
@@ -2694,17 +2696,10 @@ class SafeDistanceSimulator {
     housing.position.set(xPos + armLength, 5.7, 0);
     light.add(housing);
 
-    // Light bulb - per-instance material (color changes dynamically)
-    const bulbMaterial = new THREE.MeshBasicMaterial({
-      color: 0x000000  // Will be set based on darkness
-    });
-    const bulb = new THREE.Mesh(geom.bulb, bulbMaterial);
+    // Light bulb - shared material (color updated once per frame based on darkness)
+    const bulb = new THREE.Mesh(geom.bulb, mat.bulb);
     bulb.position.set(xPos + armLength, 5.55, 0);
     light.add(bulb);
-
-    // Store bulb reference and its X offset for dynamic light positioning
-    (bulb as any).lightXOffset = xPos + armLength;
-    this.streetlightBulbs.push(bulb);
 
     return light;
   }
@@ -2791,14 +2786,9 @@ class SafeDistanceSimulator {
 
     const signHeight = signCenterHeight;
 
-    // Sign face with complete texture (per-instance material for different textures)
-    const texture = this.speedLimitTextures.get(speedLimit);
-    if (texture) {
-      const signMaterial = new THREE.MeshBasicMaterial({
-        map: texture,
-        transparent: true,
-        side: THREE.DoubleSide
-      });
+    // Sign face with pre-warmed shared material
+    const signMaterial = mat.signFaces.get(speedLimit);
+    if (signMaterial) {
       const signFace = new THREE.Mesh(geom.face, signMaterial);
       signFace.position.set(0, signHeight, 0.03);
       signFace.rotation.y = Math.PI; // Face toward approaching player (-Z direction)
@@ -2820,12 +2810,8 @@ class SafeDistanceSimulator {
   private createKilometerBridge(kmNumber: number): THREE.Group {
     const bridge = new THREE.Group();
 
-    // Iron tube material (dark metallic gray)
-    const tubeMaterial = new THREE.MeshStandardMaterial({
-      color: 0x555555,
-      metalness: 0.8,
-      roughness: 0.3
-    });
+    // Use shared iron tube material (pre-warmed for shader compilation)
+    const tubeMaterial = this.sharedSignMaterials!.bridgeTube;
 
     const tubeRadius = 0.12;
     const tubeSegments = 16;
@@ -4211,12 +4197,10 @@ class SafeDistanceSimulator {
     const streetlightIntensity = Math.max(0, (darkness - 0.3) * 3); // Start at darkness 0.3, full at 0.6
     const bulbColor = streetlightIntensity > 0 ? 0xffaa44 : 0x333333; // Warm orange when lit
 
-    // Only update bulb colors when color actually changes (avoid loop every frame)
+    // Only update shared bulb material when color actually changes
     if (bulbColor !== this.lastBulbColor) {
       this.lastBulbColor = bulbColor;
-      for (const bulb of this.streetlightBulbs) {
-        (bulb.material as THREE.MeshBasicMaterial).color.setHex(bulbColor);
-      }
+      this.sharedStreetlightMaterials!.bulb.color.setHex(bulbColor);
     }
 
     // Position dynamic lights near player (only 4 lights for performance)
@@ -4237,11 +4221,8 @@ class SafeDistanceSimulator {
     this.leadVehicle.setTraction(weatherTraction);
     this.leadVehicleAI.setTraction(weatherTraction); // AI brakes more suddenly in bad weather
 
-    // Render mirrors every 2nd frame for better performance (3 extra scene renders)
-    this.frameCount++;
-    if (this.frameCount % 2 === 0) {
-      this.updateMirrors();
-    }
+    // Update all mirrors (3 extra scene renders)
+    this.updateMirrors();
 
     // Check for collision
     this.checkCollision();
